@@ -203,7 +203,7 @@ class CLIPLoaderMultiGPU:
             "required": {
                 "clip_name": (folder_paths.get_filename_list("clip"),),
                 "type": (
-                    ["stable_diffusion", "stable_cascade", "sd3", "stable_audio"],
+                    ["stable_diffusion", "stable_cascade", "sd3", "stable_audio", "mochi", "ltxv"],
                 ),
                 "device": ([f"cuda:{i}" for i in range(torch.cuda.device_count())],),
             }
@@ -223,6 +223,10 @@ class CLIPLoaderMultiGPU:
             clip_type = comfy.sd.CLIPType.SD3
         elif type == "stable_audio":
             clip_type = comfy.sd.CLIPType.STABLE_AUDIO
+        elif type == "mochi":
+            clip_type = comfy.sd.CLIPType.MOCHI
+        elif type == "ltxv":
+            clip_type = comfy.sd.CLIPType.LTXV
         else:
             clip_type = comfy.sd.CLIPType.STABLE_DIFFUSION
 
