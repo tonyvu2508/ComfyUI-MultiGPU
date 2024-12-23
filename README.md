@@ -2,7 +2,7 @@
 
 ### Experimental nodes for using multiple GPUs in a single ComfyUI workflow.
 
-This extension adds new nodes for model loading that allow you to specify the GPU to use for each model. It monkey patches the memory management of ComfyUI in a hacky way and is neither a comprehensive solution nor a well-tested one. Use at your own risk.
+This extension adds device selection capabilities to model loading nodes in ComfyUI. It monkey patches the memory management of ComfyUI in a hacky way and is neither a comprehensive solution nor a well-tested one. Use at your own risk.
 
 Note that this does not add parallelism. The workflow steps are still executed sequentially just on different GPUs. Any potential speedup comes from not having to constantly load and unload models from VRAM.
 
@@ -12,16 +12,29 @@ Clone this repository inside `ComfyUI/custom_nodes/`.
 
 ## Nodes
 
-![](examples/nodes.png)
+The extension automatically creates MultiGPU versions of loader nodes. Each MultiGPU node has the same functionality as its original counterpart but adds a `device` parameter that allows you to specify the GPU to use.
 
-The extension adds new loader nodes corresponding to the default ones. The new nodes have the same functionality but add a new `device` parameter that allows you to specify the GPU to use.
+Currently supported nodes (automatically detected if available):
+- Standard ComfyUI loaders:
+  - CheckpointLoaderSimpleMultiGPU
+  - CLIPLoaderMultiGPU
+  - ControlNetLoaderMultiGPU 
+  - DualCLIPLoaderMultiGPU
+  - TripleCLIPLoaderMultiGPU
+  - UNETLoaderMultiGPU
+  - VAELoaderMultiGPU
 
-- `CheckpointLoaderMultiGPU`
-- `CLIPLoaderMultiGPU`
-- `ControlNetLoaderMultiGPU`
-- `DualCLIPLoaderMultiGPU`
-- `UNETLoaderMultiGPU`
-- `VAELoaderMultiGPU`
+- GGUF loaders (requires [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF)):
+  - UnetLoaderGGUFMultiGPU (supports quantized models like [flux1-dev-gguf](https://huggingface.co/city96/FLUX.1-dev-gguf))
+  - UnetLoaderGGUFAdvancedMultiGPU 
+  - CLIPLoaderGGUFMultiGPU
+  - DualCLIPLoaderGGUFMultiGPU
+  - TripleCLIPLoaderGGUFMultiGPU
+
+- Additional supported nodes:
+  - LoadFluxControlNet (requires [x-flux-comfy](https://github.com/XLabAI/x-flux-comfyui))
+
+All MultiGPU nodes can be found in the "multigpu" category in the node menu.
 
 ## Example workflows
 
@@ -47,10 +60,10 @@ This workflow loads a FLUX.1-dev model and an SDXL model in the same workflow. T
 
 ## Support
 
-If you encounter problems, please [open an issue](https://github.com/neuratech-ai/ComfyUI-MultiGPU/issues/new). Attach the workflow if possible.
+If you encounter problems, please [open an issue](https://github.com/pollockjj/ComfyUI-MultiGPU/issues/new). Attach the workflow if possible.
 
 ## Credits
 
-Made by [Alexander Dzhoganov](https://github.com/AlexanderDzhoganov).
-
-For business inquiries, email [sales@neuratech.io](mailto:sales@neuratech.io) or visit [our website](https://neuratech.io/).
+Originally created by [Alexander Dzhoganov](https://github.com/AlexanderDzhoganov).  
+Implementation improved by [City96](https://v100s.net/).  
+Currently maintained by [pollockjj](https://github.com/pollockjj).
