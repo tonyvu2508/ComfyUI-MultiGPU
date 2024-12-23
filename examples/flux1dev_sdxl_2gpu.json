@@ -1,6 +1,6 @@
 {
-  "last_node_id": 42,
-  "last_link_id": 58,
+  "last_node_id": 45,
+  "last_link_id": 67,
   "nodes": [
     {
       "id": 22,
@@ -9,10 +9,10 @@
         430,
         260
       ],
-      "size": {
-        "0": 310,
-        "1": 50
-      },
+      "size": [
+        310,
+        50
+      ],
       "flags": {},
       "order": 12,
       "mode": 0,
@@ -37,13 +37,14 @@
           "links": [
             30
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         }
       ],
       "properties": {
         "Node name for S&R": "BasicGuider"
-      }
+      },
+      "widgets_values": []
     },
     {
       "id": 16,
@@ -52,13 +53,14 @@
         430,
         350
       ],
-      "size": {
-        "0": 315,
-        "1": 58
-      },
+      "size": [
+        315,
+        58
+      ],
       "flags": {},
       "order": 0,
       "mode": 0,
+      "inputs": [],
       "outputs": [
         {
           "name": "SAMPLER",
@@ -83,13 +85,14 @@
         440,
         130
       ],
-      "size": {
-        "0": 315,
-        "1": 82
-      },
+      "size": [
+        315,
+        82
+      ],
       "flags": {},
       "order": 1,
       "mode": 0,
+      "inputs": [],
       "outputs": [
         {
           "name": "NOISE",
@@ -104,7 +107,7 @@
         "Node name for S&R": "RandomNoise"
       },
       "widgets_values": [
-        453986860834097,
+        595548754702154,
         "randomize"
       ]
     },
@@ -115,10 +118,10 @@
         801,
         125
       ],
-      "size": {
-        "0": 398.79998779296875,
-        "1": 106
-      },
+      "size": [
+        398.79998779296875,
+        326
+      ],
       "flags": {},
       "order": 14,
       "mode": 0,
@@ -161,8 +164,8 @@
           "links": [
             24
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         },
         {
           "name": "denoised_output",
@@ -173,7 +176,8 @@
       ],
       "properties": {
         "Node name for S&R": "SamplerCustomAdvanced"
-      }
+      },
+      "widgets_values": []
     },
     {
       "id": 29,
@@ -182,12 +186,12 @@
         411,
         746
       ],
-      "size": {
-        "0": 331.20001220703125,
-        "1": 82
-      },
+      "size": [
+        331.20001220703125,
+        82
+      ],
       "flags": {},
-      "order": 11,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -203,8 +207,8 @@
           "links": [
             42
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         }
       ],
       "properties": {
@@ -222,10 +226,10 @@
         414,
         877
       ],
-      "size": {
-        "0": 320,
-        "1": 50
-      },
+      "size": [
+        320,
+        50
+      ],
       "flags": {},
       "order": 13,
       "mode": 0,
@@ -238,7 +242,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 43
+          "link": 67
         }
       ],
       "outputs": [
@@ -248,46 +252,14 @@
           "links": [
             44
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         }
       ],
       "properties": {
         "Node name for S&R": "VAEEncode"
-      }
-    },
-    {
-      "id": 10,
-      "type": "VAELoader",
-      "pos": [
-        20,
-        438
-      ],
-      "size": {
-        "0": 320,
-        "1": 60
       },
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "outputs": [
-        {
-          "name": "VAE",
-          "type": "VAE",
-          "links": [
-            12,
-            43
-          ],
-          "shape": 3,
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAELoader"
-      },
-      "widgets_values": [
-        "ae.sft"
-      ]
+      "widgets_values": []
     },
     {
       "id": 6,
@@ -296,18 +268,18 @@
         420,
         460
       ],
-      "size": {
-        "0": 360,
-        "1": 76
-      },
+      "size": [
+        360,
+        76
+      ],
       "flags": {},
-      "order": 7,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 10
+          "link": 65
         }
       ],
       "outputs": [
@@ -334,12 +306,12 @@
         415,
         588
       ],
-      "size": {
-        "0": 315,
-        "1": 106
-      },
+      "size": [
+        315,
+        106
+      ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -369,50 +341,16 @@
       ]
     },
     {
-      "id": 11,
-      "type": "DualCLIPLoader",
-      "pos": [
-        20,
-        280
-      ],
-      "size": {
-        "0": 354.42767333984375,
-        "1": 106
-      },
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "outputs": [
-        {
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": [
-            10
-          ],
-          "shape": 3,
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DualCLIPLoader"
-      },
-      "widgets_values": [
-        "t5xxl_fp16.safetensors",
-        "clip_l.safetensors",
-        "flux"
-      ]
-    },
-    {
       "id": 34,
       "type": "VAEEncode",
       "pos": [
-        1589.1283196678291,
-        127.44446247137648
+        1589.1282958984375,
+        127.44446563720703
       ],
-      "size": {
-        "0": 274.20001220703125,
-        "1": 46
-      },
+      "size": [
+        274.20001220703125,
+        46
+      ],
       "flags": {},
       "order": 16,
       "mode": 0,
@@ -425,7 +363,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 48
+          "link": 64
         }
       ],
       "outputs": [
@@ -435,13 +373,14 @@
           "links": [
             51
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         }
       ],
       "properties": {
         "Node name for S&R": "VAEEncode"
-      }
+      },
+      "widgets_values": []
     },
     {
       "id": 36,
@@ -450,18 +389,18 @@
         1599,
         252
       ],
-      "size": {
-        "0": 259.20001220703125,
-        "1": 287.2425537109375
-      },
+      "size": [
+        259.20001220703125,
+        287.2425537109375
+      ],
       "flags": {},
-      "order": 8,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 49
+          "link": 60
         }
       ],
       "outputs": [
@@ -471,8 +410,8 @@
           "links": [
             52
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         }
       ],
       "properties": {
@@ -496,18 +435,18 @@
         1597,
         585
       ],
-      "size": {
-        "0": 259.20001220703125,
-        "1": 287.2425537109375
-      },
+      "size": [
+        259.20001220703125,
+        287.2425537109375
+      ],
       "flags": {},
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 50
+          "link": 61
         }
       ],
       "outputs": [
@@ -517,8 +456,8 @@
           "links": [
             53
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         }
       ],
       "properties": {
@@ -539,13 +478,13 @@
       "id": 39,
       "type": "KSampler",
       "pos": [
-        2089.016842205726,
-        292.69156397818193
+        2089.016845703125,
+        292.6915588378906
       ],
-      "size": {
-        "0": 342.20404052734375,
-        "1": 262
-      },
+      "size": [
+        342.20404052734375,
+        474
+      ],
       "flags": {},
       "order": 18,
       "mode": 0,
@@ -553,7 +492,7 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 54
+          "link": 59
         },
         {
           "name": "positive",
@@ -578,15 +517,15 @@
           "links": [
             55
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         }
       ],
       "properties": {
         "Node name for S&R": "KSampler"
       },
       "widgets_values": [
-        269618494777953,
+        3456650560542,
         "randomize",
         20,
         4,
@@ -596,69 +535,16 @@
       ]
     },
     {
-      "id": 35,
-      "type": "CheckpointLoaderMultiGPU",
-      "pos": [
-        1079,
-        -118
-      ],
-      "size": {
-        "0": 388.79998779296875,
-        "1": 122
-      },
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            54
-          ],
-          "shape": 3,
-          "slot_index": 0
-        },
-        {
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": [
-            49,
-            50
-          ],
-          "shape": 3,
-          "slot_index": 1
-        },
-        {
-          "name": "VAE",
-          "type": "VAE",
-          "links": [
-            48,
-            56
-          ],
-          "shape": 3,
-          "slot_index": 2
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CheckpointLoaderMultiGPU"
-      },
-      "widgets_values": [
-        "sd_xl_base_1.0.safetensors",
-        "cuda:1"
-      ]
-    },
-    {
       "id": 40,
       "type": "VAEDecode",
       "pos": [
-        2484.164708892737,
-        290.72275339468587
+        2484.164794921875,
+        290.7227478027344
       ],
-      "size": {
-        "0": 274.20001220703125,
-        "1": 46
-      },
+      "size": [
+        274.20001220703125,
+        46
+      ],
       "flags": {},
       "order": 19,
       "mode": 0,
@@ -671,7 +557,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 56
+          "link": 63
         }
       ],
       "outputs": [
@@ -681,13 +567,14 @@
           "links": [
             57
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         }
       ],
       "properties": {
         "Node name for S&R": "VAEDecode"
-      }
+      },
+      "widgets_values": []
     },
     {
       "id": 41,
@@ -696,10 +583,10 @@
         2909,
         313
       ],
-      "size": {
-        "0": 337.3276672363281,
-        "1": 335.514892578125
-      },
+      "size": [
+        337.3276672363281,
+        335.514892578125
+      ],
       "flags": {},
       "order": 20,
       "mode": 0,
@@ -710,9 +597,11 @@
           "link": 57
         }
       ],
+      "outputs": [],
       "properties": {
         "Node name for S&R": "PreviewImage"
-      }
+      },
+      "widgets_values": []
     },
     {
       "id": 8,
@@ -721,10 +610,10 @@
         1263,
         128
       ],
-      "size": {
-        "0": 210,
-        "1": 46
-      },
+      "size": [
+        210,
+        46
+      ],
       "flags": {},
       "order": 15,
       "mode": 0,
@@ -737,7 +626,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 12
+          "link": 66
         }
       ],
       "outputs": [
@@ -753,40 +642,126 @@
       ],
       "properties": {
         "Node name for S&R": "VAEDecode"
-      }
+      },
+      "widgets_values": []
     },
     {
-      "id": 31,
-      "type": "UNETLoaderMultiGPU",
+      "id": 43,
+      "type": "CheckpointLoaderSimpleMultiGPU",
       "pos": [
-        -79,
-        113
+        1274.54931640625,
+        -407.59539794921875
       ],
-      "size": {
-        "0": 460.79998779296875,
-        "1": 106
-      },
+      "size": [
+        378,
+        122
+      ],
       "flags": {},
-      "order": 5,
+      "order": 2,
       "mode": 0,
+      "inputs": [],
       "outputs": [
         {
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            45,
-            46
+            59
           ],
-          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            60,
+            61
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            63,
+            64
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimpleMultiGPU"
+      },
+      "widgets_values": [
+        "juggernautXL_juggXIByRundiffusion.safetensors",
+        "cuda:0"
+      ]
+    },
+    {
+      "id": 44,
+      "type": "DualCLIPLoaderMultiGPU",
+      "pos": [
+        29.027118682861328,
+        249.20140075683594
+      ],
+      "size": [
+        315,
+        130
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            65
+          ],
           "slot_index": 0
         }
       ],
       "properties": {
-        "Node name for S&R": "UNETLoaderMultiGPU"
+        "Node name for S&R": "DualCLIPLoaderMultiGPU"
       },
       "widgets_values": [
-        "flux1-dev.sft",
-        "default",
+        "t5xxl_fp16.safetensors",
+        "clip_l.safetensors",
+        "flux",
+        "cuda:0"
+      ]
+    },
+    {
+      "id": 45,
+      "type": "VAELoaderMultiGPU",
+      "pos": [
+        25.34747314453125,
+        431.3384094238281
+      ],
+      "size": [
+        315,
+        82
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            66,
+            67
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoaderMultiGPU"
+      },
+      "widgets_values": [
+        "ae.safetensors",
         "cuda:0"
       ]
     },
@@ -797,13 +772,14 @@
         23,
         549
       ],
-      "size": {
-        "0": 315.010498046875,
-        "1": 576.2686767578125
-      },
+      "size": [
+        315.010498046875,
+        576.2686767578125
+      ],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
+      "inputs": [],
       "outputs": [
         {
           "name": "IMAGE",
@@ -811,8 +787,8 @@
           "links": [
             41
           ],
-          "shape": 3,
-          "slot_index": 0
+          "slot_index": 0,
+          "shape": 3
         },
         {
           "name": "MASK",
@@ -825,21 +801,57 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "00061-272637944.jpeg",
+        "43504647.jpeg",
         "image"
+      ]
+    },
+    {
+      "id": 31,
+      "type": "UNETLoaderMultiGPU",
+      "pos": [
+        18.507761001586914,
+        71.6053237915039
+      ],
+      "size": [
+        327.4168701171875,
+        106
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            45,
+            46
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoaderMultiGPU"
+      },
+      "widgets_values": [
+        "flux1-dev.safetensors",
+        "default",
+        "cuda:1"
       ]
     },
     {
       "id": 42,
       "type": "PreviewImage",
       "pos": [
-        1141,
-        382
+        1227.970947265625,
+        421.3040771484375
       ],
-      "size": {
-        "0": 337.3276672363281,
-        "1": 335.514892578125
-      },
+      "size": [
+        337.3276672363281,
+        335.514892578125
+      ],
       "flags": {},
       "order": 17,
       "mode": 0,
@@ -850,28 +862,14 @@
           "link": 58
         }
       ],
+      "outputs": [],
       "properties": {
         "Node name for S&R": "PreviewImage"
-      }
+      },
+      "widgets_values": []
     }
   ],
   "links": [
-    [
-      10,
-      11,
-      0,
-      6,
-      0,
-      "CLIP"
-    ],
-    [
-      12,
-      10,
-      0,
-      8,
-      1,
-      "VAE"
-    ],
     [
       19,
       16,
@@ -937,14 +935,6 @@
       "IMAGE"
     ],
     [
-      43,
-      10,
-      0,
-      30,
-      1,
-      "VAE"
-    ],
-    [
       44,
       30,
       0,
@@ -977,30 +967,6 @@
       "IMAGE"
     ],
     [
-      48,
-      35,
-      2,
-      34,
-      1,
-      "VAE"
-    ],
-    [
-      49,
-      35,
-      1,
-      36,
-      0,
-      "CLIP"
-    ],
-    [
-      50,
-      35,
-      1,
-      37,
-      0,
-      "CLIP"
-    ],
-    [
       51,
       34,
       0,
@@ -1025,28 +991,12 @@
       "CONDITIONING"
     ],
     [
-      54,
-      35,
-      0,
-      39,
-      0,
-      "MODEL"
-    ],
-    [
       55,
       39,
       0,
       40,
       0,
       "LATENT"
-    ],
-    [
-      56,
-      35,
-      2,
-      40,
-      1,
-      "VAE"
     ],
     [
       57,
@@ -1063,18 +1013,85 @@
       42,
       0,
       "IMAGE"
+    ],
+    [
+      59,
+      43,
+      0,
+      39,
+      0,
+      "MODEL"
+    ],
+    [
+      60,
+      43,
+      1,
+      36,
+      0,
+      "CLIP"
+    ],
+    [
+      61,
+      43,
+      1,
+      37,
+      0,
+      "CLIP"
+    ],
+    [
+      63,
+      43,
+      2,
+      40,
+      1,
+      "VAE"
+    ],
+    [
+      64,
+      43,
+      2,
+      34,
+      1,
+      "VAE"
+    ],
+    [
+      65,
+      44,
+      0,
+      6,
+      0,
+      "CLIP"
+    ],
+    [
+      66,
+      45,
+      0,
+      8,
+      1,
+      "VAE"
+    ],
+    [
+      67,
+      45,
+      0,
+      30,
+      1,
+      "VAE"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.6830134553650712,
+      "scale": 0.7972024500000632,
       "offset": [
-        42.79059534698729,
-        134.923889147032
+        319.43236475727787,
+        454.6687884009703
       ]
-    }
+    },
+    "ue_links": [],
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0
   },
   "version": 0.4
 }

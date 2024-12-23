@@ -1,6 +1,6 @@
 {
-  "last_node_id": 33,
-  "last_link_id": 49,
+  "last_node_id": 35,
+  "last_link_id": 52,
   "nodes": [
     {
       "id": 22,
@@ -20,7 +20,7 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 45,
+          "link": 51,
           "slot_index": 0
         },
         {
@@ -77,74 +77,6 @@
       "widgets_values": [
         "euler"
       ]
-    },
-    {
-      "id": 13,
-      "type": "SamplerCustomAdvanced",
-      "pos": [
-        801,
-        125
-      ],
-      "size": [
-        398.79998779296875,
-        326
-      ],
-      "flags": {},
-      "order": 11,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "noise",
-          "type": "NOISE",
-          "link": 37,
-          "slot_index": 0
-        },
-        {
-          "name": "guider",
-          "type": "GUIDER",
-          "link": 30,
-          "slot_index": 1
-        },
-        {
-          "name": "sampler",
-          "type": "SAMPLER",
-          "link": 19,
-          "slot_index": 2
-        },
-        {
-          "name": "sigmas",
-          "type": "SIGMAS",
-          "link": 20,
-          "slot_index": 3
-        },
-        {
-          "name": "latent_image",
-          "type": "LATENT",
-          "link": 44,
-          "slot_index": 4
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output",
-          "type": "LATENT",
-          "links": [
-            24
-          ],
-          "slot_index": 0,
-          "shape": 3
-        },
-        {
-          "name": "denoised_output",
-          "type": "LATENT",
-          "links": null,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "SamplerCustomAdvanced"
-      },
-      "widgets_values": []
     },
     {
       "id": 29,
@@ -240,13 +172,13 @@
         106
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 46,
+          "link": 52,
           "slot_index": 0
         }
       ],
@@ -339,153 +271,8 @@
         "Node name for S&R": "RandomNoise"
       },
       "widgets_values": [
-        1081409732488957,
+        1011907241509375,
         "randomize"
-      ]
-    },
-    {
-      "id": 6,
-      "type": "CLIPTextEncode",
-      "pos": [
-        428,
-        456
-      ],
-      "size": [
-        360,
-        76
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "clip",
-          "type": "CLIP",
-          "link": 47
-        }
-      ],
-      "outputs": [
-        {
-          "name": "CONDITIONING",
-          "type": "CONDITIONING",
-          "links": [
-            40
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CLIPTextEncode"
-      },
-      "widgets_values": [
-        "steampunk style"
-      ]
-    },
-    {
-      "id": 31,
-      "type": "UNETLoaderMultiGPU",
-      "pos": [
-        -148,
-        76
-      ],
-      "size": [
-        460.79998779296875,
-        106
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            45,
-            46
-          ],
-          "slot_index": 0,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "UNETLoaderMultiGPU"
-      },
-      "widgets_values": [
-        "flux1-dev.safetensors",
-        "default",
-        "cuda:1"
-      ]
-    },
-    {
-      "id": 32,
-      "type": "DualCLIPLoaderMultiGPU",
-      "pos": [
-        -145,
-        230
-      ],
-      "size": [
-        456.3470458984375,
-        130
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": [
-            47
-          ],
-          "slot_index": 0,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DualCLIPLoaderMultiGPU"
-      },
-      "widgets_values": [
-        "t5xxl_fp16.safetensors",
-        "clip_l.safetensors",
-        "flux",
-        "cuda:0"
-      ]
-    },
-    {
-      "id": 33,
-      "type": "VAELoaderMultiGPU",
-      "pos": [
-        -141,
-        406
-      ],
-      "size": [
-        450.23980712890625,
-        82
-      ],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "VAE",
-          "type": "VAE",
-          "links": [
-            48,
-            49
-          ],
-          "slot_index": 0,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAELoaderMultiGPU"
-      },
-      "widgets_values": [
-        "ae.safetensors",
-        "cuda:0"
       ]
     },
     {
@@ -516,6 +303,178 @@
       "widgets_values": [
         "ComfyUI"
       ]
+    },
+    {
+      "id": 35,
+      "type": "DualCLIPLoaderGGUFMultiGPU",
+      "pos": [
+        -135.9344482421875,
+        224.67466735839844
+      ],
+      "size": [
+        439.5617370605469,
+        130
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            50
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DualCLIPLoaderGGUFMultiGPU"
+      },
+      "widgets_values": [
+        "t5-v1_1-xxl-encoder-Q4_K_M.gguf",
+        "clip_l.safetensors",
+        "flux",
+        "cuda:0"
+      ]
+    },
+    {
+      "id": 33,
+      "type": "VAELoaderMultiGPU",
+      "pos": [
+        -136.16221618652344,
+        397.7065734863281
+      ],
+      "size": [
+        450.23980712890625,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            48,
+            49
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoaderMultiGPU"
+      },
+      "widgets_values": [
+        "ae.safetensors",
+        "cuda:0"
+      ]
+    },
+    {
+      "id": 34,
+      "type": "UnetLoaderGGUFMultiGPU",
+      "pos": [
+        -129.1488494873047,
+        104.35658264160156
+      ],
+      "size": [
+        424.197265625,
+        82
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            51,
+            52
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UnetLoaderGGUFMultiGPU"
+      },
+      "widgets_values": [
+        "flux1-dev-Q4_0.gguf",
+        "cuda:1"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        842.8128662109375,
+        -96.6082763671875
+      ],
+      "size": [
+        398.79998779296875,
+        326
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 37,
+          "slot_index": 0
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 30,
+          "slot_index": 1
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 19,
+          "slot_index": 2
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 20,
+          "slot_index": 3
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 44,
+          "slot_index": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            24
+          ],
+          "slot_index": 0,
+          "shape": 3
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "widgets_values": []
     },
     {
       "id": 26,
@@ -553,8 +512,46 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "43451813.jpeg",
+        "ComfyUI_07019_.png",
         "image"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "CLIPTextEncode",
+      "pos": [
+        414.6198425292969,
+        458.5087585449219
+      ],
+      "size": [
+        360,
+        76
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 50
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            40
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "steampunk style"
       ]
     }
   ],
@@ -640,30 +637,6 @@
       "LATENT"
     ],
     [
-      45,
-      31,
-      0,
-      22,
-      0,
-      "MODEL"
-    ],
-    [
-      46,
-      31,
-      0,
-      17,
-      0,
-      "MODEL"
-    ],
-    [
-      47,
-      32,
-      0,
-      6,
-      0,
-      "CLIP"
-    ],
-    [
       48,
       33,
       0,
@@ -678,16 +651,40 @@
       30,
       1,
       "VAE"
+    ],
+    [
+      50,
+      35,
+      0,
+      6,
+      0,
+      "CLIP"
+    ],
+    [
+      51,
+      34,
+      0,
+      22,
+      0,
+      "MODEL"
+    ],
+    [
+      52,
+      34,
+      0,
+      17,
+      0,
+      "MODEL"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.8769226950000688,
+      "scale": 0.7972024500000681,
       "offset": [
-        365.39453135534154,
-        31.74503272619687
+        532.4482492796592,
+        204.76554079618148
       ]
     },
     "ue_links": [],

@@ -38,9 +38,11 @@ time.sleep(2) # This is to make sure the other nodes are already loaded
 from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
 
 TARGET_NODE_NAMES = {
-    "UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader",
-    "UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF", "TripleCLIPLoaderGGUF",
-    "LoadFluxControlNet",
+    "UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader",            # ComfyUI Core Nodes - https://github.com/comfyanonymous/ComfyUI
+    "UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF", "TripleCLIPLoaderGGUF",                             # ComfyUI-GGUF - https://github.com/city96/ComfyUI-GGUF
+    "LoadFluxControlNet",                                                                                                                   # x-flux-comfyui - https://github.com/XLabs-AI/x-flux-comfyui
+    "Florence2ModelLoader", "DownloadAndLoadFlorence2Model",                                                                                # ComfyUI-Florence2 - https://github.com/kijai/ComfyUI-Florence2
+    "LTXVLoader",                                                                                                                           # ComfyUI-LTXVideo - https://github.com/Lightricks/ComfyUI-LTXVideo
 }
 
 NODE_CLASS_MAPPINGS = {}

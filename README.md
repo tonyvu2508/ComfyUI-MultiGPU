@@ -50,13 +50,43 @@ This workflow loads two SDXL checkpoints on two different GPUs. The first checkp
 
 - [Download](examples/flux1dev_2gpu.json)
 
-This workflow loads a FLUX.1-dev model and splits it across two GPUs. The UNet model is loaded on GPU 0 while the text encoders and VAE are loaded on GPU 1.
+This workflow loads a FLUX.1-dev model and splits it across two GPUs. The UNet model is loaded on GPU 1 while the text encoders and VAE are loaded on GPU 0.
 
 ### FLUX.1-dev and SDXL in the same workflow
 
 - [Download](examples/flux1dev_sdxl_2gpu.json)
 
-This workflow loads a FLUX.1-dev model and an SDXL model in the same workflow. The FLUX.1-dev model is loaded on GPU 0, and the SDXL model is loaded on GPU 1.
+This workflow loads a FLUX.1-dev model and an SDXL model in the same workflow. The FLUX.1-dev model has its UNet on GPU 1 with VAE and text encoders on GPU 0, while the SDXL model uses separate allocations.
+
+### Using GGUF quantized models across GPUs
+
+- [Download](examples/flux1dev_2gpu_GGUF.json)
+
+This workflow demonstrates using quantized GGUF models split across multiple GPUs for reduced VRAM usage with the UNet on GPU 1, VAE and text encoders on GPU 0.
+
+### EXPERIMENTAL - USE AT YOUR OWN RISK
+
+These workflows combine multiple features and non-core loaders types and may require significant VRAM to execute. They are provided as examples of what's possible but may require adjustment for your specific setup.
+
+#### Multi-Model Video Generation Pipeline
+
+- [Download](examples/florence2_flux1dev_ltxv_2gpu_GGUF.json)
+
+This workflow creates an img2txt2img2vid video generation pipeline by:
+1. Taking a starting image for analysis by Florence2
+2. Using the Florence2 data for a FLUX.1 Dev image prompt
+3. Taking the FLUX.1 image prompt and providing it as the starting image for LTX Video
+4. Generate a 5 second video based on the provided image
+All models are distributed across available GPUs with no reloading on dual 3090s
+
+#### LLM-Guided Video Generation
+
+- [Download](examples/llamacpp_ltxv_2gpu_GGUF.json)
+
+This workflow demonstrates:
+1. Using a local LLM (loaded on first GPU via llama.cpp) to take a text suggestion and craft an LTX Video promot
+2. Feeding the enhanced prompt to LTXVideo (loaded on second GPU) for video generation
+Requires appropriate LLM and LTXVideo models.
 
 ## Support
 
