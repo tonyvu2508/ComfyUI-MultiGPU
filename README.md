@@ -18,7 +18,7 @@ Currently supported nodes (automatically detected if available):
 - Standard ComfyUI loaders:
   - CheckpointLoaderSimpleMultiGPU
   - CLIPLoaderMultiGPU
-  - ControlNetLoaderMultiGPU 
+  - ControlNetLoaderMultiGPU
   - DualCLIPLoaderMultiGPU
   - TripleCLIPLoaderMultiGPU
   - UNETLoaderMultiGPU
@@ -26,13 +26,20 @@ Currently supported nodes (automatically detected if available):
 
 - GGUF loaders (requires [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF)):
   - UnetLoaderGGUFMultiGPU (supports quantized models like [flux1-dev-gguf](https://huggingface.co/city96/FLUX.1-dev-gguf))
-  - UnetLoaderGGUFAdvancedMultiGPU 
+  - UnetLoaderGGUFAdvancedMultiGPU
   - CLIPLoaderGGUFMultiGPU
   - DualCLIPLoaderGGUFMultiGPU
   - TripleCLIPLoaderGGUFMultiGPU
 
-- Additional supported nodes:
-  - LoadFluxControlNet (requires [x-flux-comfy](https://github.com/XLabAI/x-flux-comfyui))
+- XLabAI FLUX ControlNet:
+  - LoadFluxControlNetMultiGPU (requires [x-flux-comfy](https://github.com/XLabAI/x-flux-comfyui))
+
+- Florence2:
+  - Florence2ModelLoaderMultiGPU (requires [ComfyUI-Florence2](https://github.com/kijai/ComfyUI-Florence2))
+  - DownloadAndLoadFlorence2ModelMultiGPU
+
+- LTX Video Custom Checkpoint Loader:
+  - LTXVLoaderMultiGPU (requires [ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo))
 
 All MultiGPU nodes can be found in the "multigpu" category in the node menu.
 
@@ -73,9 +80,9 @@ These workflows combine multiple features and non-core loaders types and may req
 - [Download](examples/florence2_flux1dev_ltxv_2gpu_GGUF.json)
 
 This workflow creates an img2txt2img2vid video generation pipeline by:
-1. Taking a starting image for analysis by Florence2
+1. Providing a starting image for analysis by Florence2
 2. Using the Florence2 data for a FLUX.1 Dev image prompt
-3. Taking the FLUX.1 image prompt and providing it as the starting image for LTX Video
+3. Taking the resulting FLUX.1 image and provide it as the starting image for an LTX Video image-to-video generation
 4. Generate a 5 second video based on the provided image
 All models are distributed across available GPUs with no reloading on dual 3090s
 
