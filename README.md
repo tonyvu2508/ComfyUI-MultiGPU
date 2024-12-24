@@ -1,3 +1,4 @@
+```markdown
 # ComfyUI-MultiGPU
 
 ### Experimental nodes for using multiple GPUs in a single ComfyUI workflow.
@@ -8,7 +9,11 @@ Note that this does not add parallelism. The workflow steps are still executed s
 
 ## Installation
 
-Clone this repository inside `ComfyUI/custom_nodes/`.
+Installation via [ComfyUI-Manager](https://github.com/ltdrdata/ComfyUI-Manager) is preferred. Simply search for `ComfyUI-MultiGPU` in the list of nodes and follow installation instructions.
+
+## Manual Installation
+
+Clone [this repository](https://github.com/pollockjj/ComfyUI-MultiGPU) inside `ComfyUI/custom_nodes/`.
 
 ## Nodes
 
@@ -49,25 +54,25 @@ All workflows have been tested on a 2x 3090 setup.
 
 ### Loading two SDXL checkpoints on different GPUs
 
-- [Download](examples/sdxl_2gpu.json)
+- [examples/sdxl_2gpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/sdxl_2gpu.json)
 
 This workflow loads two SDXL checkpoints on two different GPUs. The first checkpoint is loaded on GPU 0, and the second checkpoint is loaded on GPU 1.
 
 ### Split FLUX.1-dev across two GPUs
 
-- [Download](examples/flux1dev_2gpu.json)
+- [examples/flux1dev_2gpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_2gpu.json)
 
 This workflow loads a FLUX.1-dev model and splits it across two GPUs. The UNet model is loaded on GPU 1 while the text encoders and VAE are loaded on GPU 0.
 
 ### FLUX.1-dev and SDXL in the same workflow
 
-- [Download](examples/flux1dev_sdxl_2gpu.json)
+- [examples/flux1dev_sdxl_2gpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_sdxl_2gpu.json)
 
 This workflow loads a FLUX.1-dev model and an SDXL model in the same workflow. The FLUX.1-dev model has its UNet on GPU 1 with VAE and text encoders on GPU 0, while the SDXL model uses separate allocations.
 
 ### Using GGUF quantized models across GPUs
 
-- [Download](examples/flux1dev_2gpu_GGUF.json)
+- [examples/flux1dev_2gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_2gpu_GGUF.json)
 
 This workflow demonstrates using quantized GGUF models split across multiple GPUs for reduced VRAM usage with the UNet on GPU 1, VAE and text encoders on GPU 0.
 
@@ -75,9 +80,9 @@ This workflow demonstrates using quantized GGUF models split across multiple GPU
 
 These workflows combine multiple features and non-core loaders types and may require significant VRAM to execute. They are provided as examples of what's possible but may require adjustment for your specific setup.
 
-#### Multi-Model Video Generation Pipeline
+#### Image to Prompt to Image to Video Generation Pipeline
 
-- [Download](examples/florence2_flux1dev_ltxv_2gpu_GGUF.json)
+- [examples/florence2_flux1dev_ltxv_2gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/florence2_flux1dev_ltxv_2gpu_GGUF.json)
 
 This workflow creates an img2txt2img2vid video generation pipeline by:
 1. Providing a starting image for analysis by Florence2
@@ -88,7 +93,7 @@ All models are distributed across available GPUs with no reloading on dual 3090s
 
 #### LLM-Guided Video Generation
 
-- [Download](examples/llamacpp_ltxv_2gpu_GGUF.json)
+- [examples/llamacpp_ltxv_2gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/llamacpp_ltxv_2gpu_GGUF.json)
 
 This workflow demonstrates:
 1. Using a local LLM (loaded on first GPU via llama.cpp) to take a text suggestion and craft an LTX Video promot
@@ -101,6 +106,6 @@ If you encounter problems, please [open an issue](https://github.com/pollockjj/C
 
 ## Credits
 
-Originally created by [Alexander Dzhoganov](https://github.com/AlexanderDzhoganov).  
-Implementation improved by [City96](https://v100s.net/).  
+Originally created by [Alexander Dzhoganov](https://github.com/AlexanderDzhoganov). 
+Implementation improved by [City96](https://v100s.net/). 
 Currently maintained by [pollockjj](https://github.com/pollockjj).
