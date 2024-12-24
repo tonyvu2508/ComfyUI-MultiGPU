@@ -1,4 +1,3 @@
-```markdown
 # ComfyUI-MultiGPU
 
 ### Experimental nodes for using multiple GPUs in a single ComfyUI workflow.
