@@ -75,6 +75,12 @@ This workflow loads a FLUX.1-dev model and an SDXL model in the same workflow. T
 
 This workflow demonstrates using quantized GGUF models split across multiple GPUs for reduced VRAM usage with the UNet on GPU 1, VAE and text encoders on GPU 0.
 
+### Using GGUF quantized models across GPUs for video generation
+
+- [examples/hunyuan_2gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/hunyuan_2gpu_GGUF.json)
+
+This workflow demonstrates using quantized GGUF models for Hunyan Video split across multiple GPUs with the FastVideo LoRA. In this instance, the video model is on GPU0 whereas the VAE and text encoders are on GPU 1.
+
 ### EXPERIMENTAL - USE AT YOUR OWN RISK
 
 These workflows combine multiple features and non-core loaders types and may require significant VRAM to execute. They are provided as examples of what's possible but may require adjustment for your specific setup.
