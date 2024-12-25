@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-multigpu"
-description = "Experimental nodes for using multiple GPUs in a single ComfyUI workflow.\nOriginal repo: [a/https://github.com/neuratech-ai/ComfyUI-MultiGPU](https://github.com/neuratech-ai/ComfyUI-MultiGPU)"
-version = "1.0.0"
+description = "Experimental nodes for using multiple GPUs in a single ComfyUI workflow. Support for GGUF and other popular custom loaders. Example workflows for SDXL, FLUX, LTXVideo, and Hunyuan Video"
+version = "1.0.1"
 license = {file = "LICENSE"}
 
 [project.urls]
