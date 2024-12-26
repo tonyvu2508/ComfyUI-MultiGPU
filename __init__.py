@@ -43,6 +43,7 @@ TARGET_NODE_NAMES = {
     "LoadFluxControlNet",                                                                                                                   # x-flux-comfyui - https://github.com/XLabs-AI/x-flux-comfyui
     "Florence2ModelLoader", "DownloadAndLoadFlorence2Model",                                                                                # ComfyUI-Florence2 - https://github.com/kijai/ComfyUI-Florence2
     "LTXVLoader",                                                                                                                           # ComfyUI-LTXVideo - https://github.com/Lightricks/ComfyUI-LTXVideo
+    "MMAudioFeatureUtilsLoader", "MMAudioModelLoader",                                                                                      # ComfyUI-MMAudio - https://github.com/kijai/ComfyUI-MMAudio --EXPERIMENTAL--
 }
 
 NODE_CLASS_MAPPINGS = {}
