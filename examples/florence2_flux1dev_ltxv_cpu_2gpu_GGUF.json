@@ -258,7 +258,7 @@
         "microsoft/Florence-2-large",
         "fp16",
         "sdpa",
-        "cuda:0"
+        "cpu"
       ],
       "color": "#ff9414",
       "bgcolor": "#ff8000"
@@ -331,7 +331,7 @@
         "t5xxl_fp16.safetensors",
         "clip_l.safetensors",
         "flux",
-        "cuda:0"
+        "cpu"
       ]
     },
     {
@@ -534,7 +534,7 @@
       },
       "widgets_values": [
         "ae.safetensors",
-        "cuda:0"
+        "cpu"
       ]
     },
     {
@@ -1509,7 +1509,7 @@
       "widgets_values": [
         "t5-v1_1-xxl-encoder-Q8_0.gguf",
         "ltxv",
-        "cuda:0"
+        "cpu"
       ]
     },
     {

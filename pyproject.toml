@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-multigpu"
 description = "This extension adds CUDA device selection to supported loader nodes in ComfyUI. By monkey-patching ComfyUI’s memory management, each model component (like UNet, Clip, or VAE) can be loaded on a specific GPU. Examples included are multi-GPU workflows for SDXL, FLUX, LTXVideo, and Hunyuan Video for both standard and GGUF loader nodes."
-version = "1.0.2"
+version = "1.1.0"
 license = {file = "LICENSE"}
 
 [project.urls]

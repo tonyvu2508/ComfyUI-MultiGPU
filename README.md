@@ -1,10 +1,10 @@
 # ComfyUI-MultiGPU
 
-## Experimental nodes for using multiple GPUs in a single ComfyUI workflow
+## Experimental nodes for using multiple GPUs and/or offload to the CPU in a single ComfyUI workflow
 
-This extension adds device selection capabilities to model loading nodes in ComfyUI. It monkey patches the memory management of ComfyUI in a hacky way and is neither a comprehensive solution is nor is it well-tested on any edge-case VRAM solutions. **Use at your own risk.**
+This extension adds device selection capabilities to model loading nodes in ComfyUI. It monkey patches the memory management of ComfyUI in a hacky way and is neither a comprehensive solution is nor is it well-tested on any edge-case CUDA/CPU solutions. **Use at your own risk.**
 
-*Note: This does not add parallelism. The workflow steps are still executed sequentially just with model components loaded on different GPUs where allowed. Any potential speedup comes from not having to constantly load and unload models from VRAM.*
+*Note: This does not add parallelism. The workflow steps are still executed sequentially just with model components loaded on different GPUs or offloaded to the CPU where allowed. Any potential speedup comes from not having to constantly load and unload models from VRAM.*
 
 ## Installation
 
@@ -48,20 +48,15 @@ All MultiGPU nodes can be found in the "multigpu" category in the node menu.
 
 All workflows have been tested on a 2x 3090 setup.
 
-### Loading two SDXL checkpoints on different GPUs
-
-- [examples/sdxl_2gpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/sdxl_2gpu.json)
-This workflow loads two SDXL checkpoints on two different GPUs. The first checkpoint is loaded on GPU 0, and the second checkpoint is loaded on GPU 1.
-
 ### Split FLUX.1-dev across two GPUs
 
 - [examples/flux1dev_2gpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_2gpu.json)
 This workflow loads a FLUX.1-dev model and splits its components across two GPUs. The UNet model is loaded on GPU 1 while the text encoders and VAE are loaded on GPU 0.
 
-### FLUX.1-dev and SDXL in the same workflow
+### Split FLUX.1-dev between the CPU and a single GPU
 
-- [examples/flux1dev_sdxl_2gpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_sdxl_2gpu.json)
-This workflow loads a FLUX.1-dev model and an SDXL model in the same workflow. The FLUX.1-dev model has its UNet on GPU 1 with VAE and text encoders on GPU 0, while the SDXL model uses separate allocations on GPU 0.
+- [examples/flux1dev_cpugpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_cpu_1gpu_GGUF.json)
+This workflow demonstrates splitting a quantized, GGUF FLUX.1-dev model between a CPU and a single GPU. The UNet model is loaded on the GPU, while the VAE and text encoders are handled by the CPU. 
 
 ### Using GGUF quantized models across GPUs
 
@@ -73,20 +68,30 @@ This workflow demonstrates using quantized GGUF models split across multiple GPU
 - [examples/hunyuan_2gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/hunyuan_2gpu_GGUF.json)
 This workflow demonstrates using quantized GGUF models for Hunyan Video split across multiple GPUs with the FastVideo LoRA. In this instance, the video model is on GPU 0 whereas the VAE and text encoders are on GPU 1.
 
+### Loading two SDXL checkpoints on different GPUs
+
+- [examples/sdxl_2gpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/sdxl_2gpu.json)
+This workflow loads two SDXL checkpoints on two different GPUs. The first checkpoint is loaded on GPU 0, and the second checkpoint is loaded on GPU 1.
+
+### FLUX.1-dev and SDXL in the same workflow
+
+- [examples/flux1dev_sdxl_2gpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_sdxl_2gpu.json)
+This workflow loads a FLUX.1-dev model and an SDXL model in the same workflow. The FLUX.1-dev model has its UNet on GPU 1 with VAE and text encoders on GPU 0, while the SDXL model uses separate allocations on GPU 0.
+
 ### EXPERIMENTAL - USE AT YOUR OWN RISK
 
 These workflows combine multiple features and non-core loaders types and, as provided, require significant VRAM to execute. They are provided as examples of what's possible but may require adjustment for your specific setup.
 
 #### Image to Prompt to Image to Video Generation Pipeline
 
-- [examples/florence2_flux1dev_ltxv_2gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/florence2_flux1dev_ltxv_2gpu_GGUF.json)
+- [examples/florence2_flux1dev_ltxv_cpu_2gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/florence2_flux1dev_ltxv_cpu_2gpu_GGUF.json)
 This workflow creates an img2txt2img2vid video generation pipeline by:
 
- 1. Loading the Florence2 model and providing a starting image for analysis and generating a text response
- 2. Loading FLUX.1 Dev UNET, Clip, and VAE and generate an image using the Florence2 text as a prompt
- 3. Loading the LTX Video Taking the resulting FLUX.1 image and provide it as the starting image for an LTX Video image-to-video generation
+ 1. Loading the Florence2 model on the CPU and providing a starting image for analysis and generating a text response
+ 2. Loading FLUX.1 Dev UNET on GPU 1, with CLIP and VAE on the CPU and generating an image using the Florence2 text as a prompt
+ 3. Loading the LTX Video UNet and VAE on GPU 2, and LTX-encoded CLIP on the CPU, and taking the resulting FLUX.1 image and provide it as the starting image for an LTX Video image-to-video generation
  4. Generate a 5 second video based on the provided image
-All models are distributed across available GPUs with no model reloading on dual 3090s
+All models are distributed across available the available CPU and GPUs with no model reloading on dual 3090s
 
 #### LLM-Guided Video Generation
 
