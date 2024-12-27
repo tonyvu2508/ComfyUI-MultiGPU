@@ -9,6 +9,7 @@ def get_torch_device_patched():
     if (
         not torch.cuda.is_available()
         or comfy.model_management.cpu_state == comfy.model_management.CPUState.CPU
+        or "cpu" in str(current_device).lower()
     ):
         return torch.device("cpu")
     return torch.device(current_device)
@@ -20,7 +21,8 @@ def override_class(cls):
         @classmethod
         def INPUT_TYPES(s):
             inputs = copy.deepcopy(cls.INPUT_TYPES())
-            inputs["required"]["device"] = ([f"cuda:{i}" for i in range(torch.cuda.device_count())],)
+            devices = ["cpu"] + [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+            inputs["required"]["device"] = (devices,)
             return inputs
 
         CATEGORY = "multigpu"
