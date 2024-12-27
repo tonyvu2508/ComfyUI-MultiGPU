@@ -1,6 +1,6 @@
 # ComfyUI-MultiGPU
 
-## Experimental nodes for using multiple GPUs and/or offload to the CPU in a single ComfyUI workflow
+## Experimental nodes for using multiple GPUs and offloading model components to the CPU in a single ComfyUI workflow
 
 This extension adds device selection capabilities to model loading nodes in ComfyUI. It monkey patches the memory management of ComfyUI in a hacky way and is neither a comprehensive solution is nor is it well-tested on any edge-case CUDA/CPU solutions. **Use at your own risk.**
 
@@ -55,8 +55,8 @@ This workflow loads a FLUX.1-dev model and splits its components across two GPUs
 
 ### Split FLUX.1-dev between the CPU and a single GPU
 
-- [examples/flux1dev_cpugpu.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_cpu_1gpu_GGUF.json)
-This workflow demonstrates splitting a quantized, GGUF FLUX.1-dev model between a CPU and a single GPU. The UNet model is loaded on the GPU, while the VAE and text encoders are handled by the CPU. 
+- [examples/flux1dev_cpu_1gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_cpu_1gpu_GGUF.json)
+This workflow demonstrates splitting a quantized, GGUF FLUX.1-dev model between a CPU and a single GPU. The UNet model is loaded on the GPU, while the VAE and text encoders are handled by the CPU.
 
 ### Using GGUF quantized models across GPUs
 
