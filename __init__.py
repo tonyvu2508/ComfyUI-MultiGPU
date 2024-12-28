@@ -6,25 +6,11 @@ import os
 import importlib.util
 import logging
 
-def preload_module_classes(module_path, target_classes):
-    try:
-        full_path = os.path.join("custom_nodes", module_path, "__init__.py")
-        logging.info(f"MultiGPU: Attempting to preload {module_path}")
-        if not os.path.exists(full_path):
-            logging.info(f"MultiGPU: Module path {module_path} not found")
-            return [None] * len(target_classes)
-        spec = importlib.util.spec_from_file_location(module_path, full_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        logging.info(f"MultiGPU: Successfully loaded {module_path}")
-        return [getattr(module, class_name) for class_name in target_classes]
-    except Exception as e:
-        logging.info(f"MultiGPU: Failed to preload {module_path}: {e}")
-        return [None] * len(target_classes)
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.info("MultiGPU: Initialization started")
 
 current_device = comfy.model_management.get_torch_device()
+logging.info(f"MultiGPU: Initial device {current_device}")
 
 def get_torch_device_patched():
     if (
@@ -57,35 +43,96 @@ def override_class(cls):
 
     return NodeOverride
 
-# Try to preload NF4 classes
-CheckpointLoaderNF4, UNETLoaderNF4 = preload_module_classes(
-    "ComfyUI_bnb_nf4_fp4_Loaders", 
-    ["CheckpointLoaderNF4", "UNETLoaderNF4"]
-)
+def register_module(module_path, target_nodes):
+    try:
+        # For core nodes, skip module loading and just register from global mappings
+        if not module_path:
+            logging.info("MultiGPU: Starting core node registration")
+            from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
+            for node in target_nodes:
+                if node in GLOBAL_NODE_CLASS_MAPPINGS:
+                    NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[node])
+                    logging.info(f"MultiGPU: Registered core node {node}")
+                else:
+                    logging.info(f"MultiGPU: Core node {node} not found - this shouldn't happen!")
+            return
 
-# Try to preload NF4 classes
-logging.info("MultiGPU: Starting NF4 preload")
-CheckpointLoaderNF4, UNETLoaderNF4 = preload_module_classes(
-    "ComfyUI_bnb_nf4_fp4_Loaders", 
-    ["CheckpointLoaderNF4", "UNETLoaderNF4"]
-)
-logging.info(f"MultiGPU: NF4 preload complete - Checkpoint: {'Found' if CheckpointLoaderNF4 else 'Not Found'}, UNET: {'Found' if UNETLoaderNF4 else 'Not Found'}")
-
-time.sleep(20) # This is to make sure the other nodes are already loaded
-from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
-
-TARGET_NODE_NAMES = {
-    "UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader",            # ComfyUI Core Nodes - https://github.com/comfyanonymous/ComfyUI
-    "UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF", "TripleCLIPLoaderGGUF",                             # ComfyUI-GGUF - https://github.com/city96/ComfyUI-GGUF
-    "LoadFluxControlNet",                                                                                                                   # x-flux-comfyui - https://github.com/XLabs-AI/x-flux-comfyui
-    "Florence2ModelLoader", "DownloadAndLoadFlorence2Model",                                                                                # ComfyUI-Florence2 - https://github.com/kijai/ComfyUI-Florence2
-    "LTXVLoader",                                                                                                                           # ComfyUI-LTXVideo - https://github.com/Lightricks/ComfyUI-LTXVideo
-    "MMAudioFeatureUtilsLoader", "MMAudioModelLoader", "MMAudioSampler",                                                                    # ComfyUI-MMAudio - https://github.com/kijai/ComfyUI-MMAudio --EXPERIMENTAL--
-    "CheckpointLoaderNF4",
-}
+        # For custom nodes, try to load module first
+        full_path = os.path.join("custom_nodes", module_path, "__init__.py")
+        logging.info(f"MultiGPU: Checking for module at {full_path}")
+        
+        if not os.path.exists(full_path):
+            logging.info(f"MultiGPU: Module {module_path} not found - skipping")
+            return
+            
+        logging.info(f"MultiGPU: Found {module_path}, attempting to load")
+        spec = importlib.util.spec_from_file_location(module_path, full_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        logging.info(f"MultiGPU: Executed {module_path} initialization")
+        
+        from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
+        logging.info(f"MultiGPU: Looking for {module_path} nodes in global mappings")
+        for node in target_nodes:
+            if node in GLOBAL_NODE_CLASS_MAPPINGS:
+                NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[node])
+                logging.info(f"MultiGPU: Successfully wrapped {node}")
+            else:
+                logging.info(f"MultiGPU: Node {node} from {module_path} not found in global mappings")
+                
+    except Exception as e:
+        logging.info(f"MultiGPU: Error processing {module_path}: {str(e)}")
 
 NODE_CLASS_MAPPINGS = {}
-for name in TARGET_NODE_NAMES:
-    if name not in GLOBAL_NODE_CLASS_MAPPINGS:
-        continue
-    NODE_CLASS_MAPPINGS[f"{name}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[name])
+
+# Let's test just one new module at a time, starting with GGUF
+logging.info("MultiGPU: Starting Core ComfyUI registration")
+register_module("", [
+    "UNETLoader",
+    "VAELoader", 
+    "CLIPLoader",
+    "DualCLIPLoader", 
+    "TripleCLIPLoader", 
+    "CheckpointLoaderSimple", 
+    "ControlNetLoader"
+])
+
+logging.info("MultiGPU: Starting GGUF registration")
+register_module("ComfyUI-GGUF", [
+    "UnetLoaderGGUF",
+    "UnetLoaderGGUFAdvanced",
+    "CLIPLoaderGGUF",
+    "DualCLIPLoaderGGUF",
+    "TripleCLIPLoaderGGUF"
+])
+logging.info("MultiGPU: Starting X-Flux ControlNet registration")
+register_module("x-flux-comfyui", [
+    "LoadFluxControlNet"
+])
+
+logging.info("MultiGPU: Starting Florence2 registration")
+register_module("ComfyUI-Florence2", [
+    "Florence2ModelLoader",
+    "DownloadAndLoadFlorence2Model"
+])
+
+logging.info("MultiGPU: Starting LTXVideo registration")
+register_module("ComfyUI-LTXVideo", [
+    "LTXVLoader"
+])
+
+logging.info("MultiGPU: Starting MMAudio registration")
+register_module("ComfyUI-MMAudio", [
+    "MMAudioFeatureUtilsLoader",
+    "MMAudioModelLoader",
+    "MMAudioSampler"
+])
+
+logging.info("MultiGPU: Starting NF4 registration")
+register_module("ComfyUI_bnb_nf4_fp4_Loaders", [
+    "CheckpointLoaderNF4",
+    "UNETLoaderNF4"
+])
+
+
+logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
