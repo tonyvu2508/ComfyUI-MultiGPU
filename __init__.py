@@ -85,54 +85,13 @@ def register_module(module_path, target_nodes):
 
 NODE_CLASS_MAPPINGS = {}
 
-# Let's test just one new module at a time, starting with GGUF
-logging.info("MultiGPU: Starting Core ComfyUI registration")
-register_module("", [
-    "UNETLoader",
-    "VAELoader", 
-    "CLIPLoader",
-    "DualCLIPLoader", 
-    "TripleCLIPLoader", 
-    "CheckpointLoaderSimple", 
-    "ControlNetLoader"
-])
-
-logging.info("MultiGPU: Starting GGUF registration")
-register_module("ComfyUI-GGUF", [
-    "UnetLoaderGGUF",
-    "UnetLoaderGGUFAdvanced",
-    "CLIPLoaderGGUF",
-    "DualCLIPLoaderGGUF",
-    "TripleCLIPLoaderGGUF"
-])
-logging.info("MultiGPU: Starting X-Flux ControlNet registration")
-register_module("x-flux-comfyui", [
-    "LoadFluxControlNet"
-])
-
-logging.info("MultiGPU: Starting Florence2 registration")
-register_module("ComfyUI-Florence2", [
-    "Florence2ModelLoader",
-    "DownloadAndLoadFlorence2Model"
-])
-
-logging.info("MultiGPU: Starting LTXVideo registration")
-register_module("ComfyUI-LTXVideo", [
-    "LTXVLoader"
-])
-
-logging.info("MultiGPU: Starting MMAudio registration")
-register_module("ComfyUI-MMAudio", [
-    "MMAudioFeatureUtilsLoader",
-    "MMAudioModelLoader",
-    "MMAudioSampler"
-])
-
-logging.info("MultiGPU: Starting NF4 registration")
-register_module("ComfyUI_bnb_nf4_fp4_Loaders", [
-    "CheckpointLoaderNF4",
-    "UNETLoaderNF4"
-])
+register_module("", ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
+register_module("ComfyUI-GGUF", ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
+register_module("x-flux-comfyui", ["LoadFluxControlNet"])
+register_module("ComfyUI-Florence2", ["Florence2ModelLoader","DownloadAndLoadFlorence2Model"])
+register_module("ComfyUI-LTXVideo", ["LTXVLoader"])
+register_module("ComfyUI-MMAudio", ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
+register_module("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
 
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
