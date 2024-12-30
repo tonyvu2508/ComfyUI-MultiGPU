@@ -41,8 +41,10 @@ Currently supported nodes (automatically detected if available):
   - DownloadAndLoadFlorence2ModelMultiGPU
 - LTX Video Custom Checkpoint Loader (requires [ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo)):
   - LTXVLoaderMultiGPU
+- LTX Video Custom Checkpoint Loader (requires [ComfyUI_bitsandbytes_NF4](https://github.com/comfyanonymous/ComfyUI_bitsandbytes_NF4)):
+  - CheckpointLoaderNF4MultiGPU
 
-All MultiGPU nodes can be found in the "multigpu" category in the node menu.
+All MultiGPU nodes available for your install can be found in the "multigpu" category in the node menu.
 
 ## Example workflows
 

@@ -85,13 +85,12 @@ def register_module(module_path, target_nodes):
 
 NODE_CLASS_MAPPINGS = {}
 
-register_module("", ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
-register_module("ComfyUI-GGUF", ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
-register_module("x-flux-comfyui", ["LoadFluxControlNet"])
-register_module("ComfyUI-Florence2", ["Florence2ModelLoader","DownloadAndLoadFlorence2Model"])
-register_module("ComfyUI-LTXVideo", ["LTXVLoader"])
-register_module("ComfyUI-MMAudio", ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
+register_module("",                         ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
+register_module("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
+register_module("x-flux-comfyui",           ["LoadFluxControlNet"])
+register_module("ComfyUI-Florence2",        ["Florence2ModelLoader","DownloadAndLoadFlorence2Model"])
+register_module("ComfyUI-LTXVideo",         ["LTXVLoader"])
+register_module("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
 register_module("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
-
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
