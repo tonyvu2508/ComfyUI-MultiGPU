@@ -1,107 +1,42 @@
-import os
-import ast
+import time
 import copy
 import torch
+import comfy.model_management
+import os
+import importlib.util
 import logging
-from typing import Dict, Type
 
+##############################################################################
+# INITIAL SETUP
+##############################################################################
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.info("MultiGPU: Initialization started")
 
-def find_node_definition(module_path: str, node_name: str) -> Dict:
-    """
-    Finds a specific node class definition by searching Python files in the given path.
-    """
-    search_dir = os.path.join("custom_nodes", module_path)
-    if not os.path.exists(search_dir):
-        logging.info(f"MultiGPU: No custom_nodes directory {module_path}, skipping")
-        return None
-        
-    py_files = []
-    for root, _, files in os.walk(search_dir):
-        for file in files:
-            if file.endswith('.py'):
-                py_files.append(os.path.join(root, file))
-                
-    if not py_files:
-        return None
-            
-    try:
-        for file_path in py_files:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                tree = ast.parse(f.read())
+current_device = comfy.model_management.get_torch_device()
+logging.info(f"MultiGPU: Initial device {current_device}")
 
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef) and node.name == node_name:
-                    class_info = {
-                        'input_types': None,
-                        'return_types': None,
-                        'function': None,
-                        'category': None
-                    }
+def get_torch_device_patched():
+    if (
+        not torch.cuda.is_available()
+        or comfy.model_management.cpu_state == comfy.model_management.CPUState.CPU
+        or "cpu" in str(current_device).lower()
+    ):
+        return torch.device("cpu")
+    return torch.device(current_device)
 
-                    for item in node.body:
-                        if isinstance(item, ast.FunctionDef) and item.name == 'INPUT_TYPES':
-                            if any(d.id == 'classmethod' for d in item.decorator_list if isinstance(d, ast.Name)):
-                                for stmt in item.body:
-                                    if isinstance(stmt, ast.Return):
-                                        try:
-                                            class_info['input_types'] = ast.literal_eval(stmt.value)
-                                        except:
-                                            pass
+comfy.model_management.get_torch_device = get_torch_device_patched
 
-                        elif isinstance(item, ast.Assign):
-                            for target in item.targets:
-                                if isinstance(target, ast.Name):
-                                    try:
-                                        if target.id == 'RETURN_TYPES':
-                                            class_info['return_types'] = ast.literal_eval(item.value)
-                                        elif target.id == 'FUNCTION':
-                                            class_info['function'] = ast.literal_eval(item.value)
-                                        elif target.id == 'CATEGORY':
-                                            class_info['category'] = ast.literal_eval(item.value)
-                                    except:
-                                        pass
-                    
-                    return class_info
-                    
-    except Exception as e:
-        logging.error(f"MultiGPU: Error scanning for {node_name}: {str(e)}")
-    
-    return None
-
-def create_multigpu_node(node_name: str, class_info: Dict) -> Type:
-    """Creates a MultiGPU version of the node"""
-    class MultiGPUNode:
-        @classmethod
-        def INPUT_TYPES(cls):
-            inputs = copy.deepcopy(class_info['input_types'])
-            if inputs is None:
-                inputs = {"required": {}, "optional": {}}
-            elif "required" not in inputs:
-                inputs["required"] = {}
-            
-            devices = ["cpu"] + [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-            inputs["required"]["device"] = (devices,)
-            return inputs
-            
-        RETURN_TYPES = class_info['return_types'] if class_info['return_types'] is not None else tuple()
-        FUNCTION = "override"
-        CATEGORY = "multigpu"
-        
-        def override(self, *args, device="cpu", **kwargs):
-            global current_device
-            current_device = device
-            return args if isinstance(args, tuple) else (args,)
-            
-    MultiGPUNode.__name__ = f"{node_name}MultiGPU"
-    return MultiGPUNode
-
+##############################################################################
+# OVERRIDE CLASS
+##############################################################################
 def override_class(cls):
-    """Creates a MultiGPU version of a node class that preserves original functionality."""
     class NodeOverride(cls):
         @classmethod
         def INPUT_TYPES(s):
             inputs = copy.deepcopy(cls.INPUT_TYPES())
+            # In case some node forgot "required"
+            if "required" not in inputs:
+                inputs["required"] = {}
             devices = ["cpu"] + [f"cuda:{i}" for i in range(torch.cuda.device_count())]
             inputs["required"]["device"] = (devices,)
             return inputs
@@ -109,69 +44,117 @@ def override_class(cls):
         CATEGORY = "multigpu"
         FUNCTION = "override"
 
-        def override(self, *args, device, **kwargs):
+        def override(self, *args, device="cpu", **kwargs):
             global current_device
             current_device = device
             fn = getattr(super(), cls.FUNCTION)
             return fn(*args, **kwargs)
-
     return NodeOverride
 
-def register_core_nodes(target_nodes: list):
-    """Register MultiGPU versions of core ComfyUI nodes"""
+##############################################################################
+# OUR LOCAL MAPPING OF MULTIGPU OVERRIDE NODES
+# (No strict reason it has to be before the function defs, but it's typical.)
+##############################################################################
+NODE_CLASS_MAPPINGS = {}
+
+##############################################################################
+# PART 1: CORE NODES
+##############################################################################
+def register_core_nodes(core_node_names):
+    """
+    Uses ComfyUI's GLOBAL_NODE_CLASS_MAPPINGS to wrap core nodes.
+    """
+    logging.info("MultiGPU: Starting core node registration")
     try:
         from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
-        logging.info("MultiGPU: Processing core nodes")
-        for node in target_nodes:
-            if node in GLOBAL_NODE_CLASS_MAPPINGS:
-                NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[node])
-                logging.info(f"MultiGPU: Registered {node}MultiGPU")
-            else:
-                logging.info(f"MultiGPU: Core node {node} not found")
-    except Exception as e:
-        logging.error(f"MultiGPU: Error processing core nodes: {str(e)}")
+    except ImportError as e:
+        logging.error(f"MultiGPU: Could not import ComfyUI global node mappings: {e}")
+        return
 
-def register_module(module_path: str, target_nodes: list):
-    """Register MultiGPU versions of custom nodes"""
+    for node in core_node_names:
+        if node in GLOBAL_NODE_CLASS_MAPPINGS:
+            NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[node])
+            logging.info(f"MultiGPU: Registered core node {node}")
+        else:
+            logging.info(f"MultiGPU: Core node '{node}' not found in ComfyUI global mappings")
+
+##############################################################################
+# PART 2: CUSTOM NODES (LOCAL DICTIONARY APPROACH, with extra debug logs)
+##############################################################################
+def register_module(module_path: str, target_nodes: list, local_map_name="NODE_CLASS_MAPPINGS"):
+    """
+    1) Load custom_nodes/<module_path>/__init__.py via importlib
+    2) Grab the dictionary named `local_map_name` (default: 'NODE_CLASS_MAPPINGS') from that module
+    3) For each node in target_nodes, if found in that local dictionary, wrap it
+    4) No fallback to ComfyUI's global mappings
+    """
+    base_dir = os.path.join("custom_nodes", module_path)
+    init_file = os.path.join(base_dir, "__init__.py")
+
+    logging.info(f"MultiGPU: Checking custom node module at: {init_file}")
+    if not os.path.exists(init_file):
+        logging.info(f"MultiGPU: Module {module_path} not found or missing __init__.py, skipping.")
+        return
+
     try:
-        # Handle custom nodes
-        logging.info(f"MultiGPU: Processing module {module_path}")
-        search_dir = os.path.join("custom_nodes", module_path)
-        if not os.path.exists(search_dir):
-            logging.info(f"MultiGPU: Module directory {module_path} not found, skipping")
-            return
-
-        # List all Python files in the module once
-        py_files = []
-        for root, _, files in os.walk(search_dir):
-            for file in files:
-                if file.endswith('.py'):
-                    py_files.append(os.path.basename(file))
-        
-        if py_files:
-            logging.info(f"MultiGPU: Searching in {module_path}: {', '.join(sorted(py_files))}")
-            
-            for node in target_nodes:
-                class_info = find_node_definition(module_path, node)
-                if class_info:
-                    NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = create_multigpu_node(node, class_info)
-                    logging.info(f"MultiGPU: Registered {node}MultiGPU")
-                
+        logging.info(f"MultiGPU: Found {module_path}, loading local dictionary from {init_file}")
+        spec = importlib.util.spec_from_file_location(module_path, init_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        logging.info(f"MultiGPU: Executed {module_path} initialization")
     except Exception as e:
-        logging.error(f"MultiGPU: Error in {module_path}: {str(e)}")
+        logging.error(f"MultiGPU: Error loading {module_path}: {e}")
+        return
 
-# Initialize
-NODE_CLASS_MAPPINGS = {}
-current_device = None
+    # Grab that module's local dictionary (e.g. NODE_CLASS_MAPPINGS)
+    local_map = getattr(module, local_map_name, None)
+    if not local_map:
+        logging.info(f"MultiGPU: {module_path} has no '{local_map_name}' dictionary, skipping override.")
+        return
 
-# Register all modules
-register_module("", ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader","TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
-register_module("ComfyUI-GGUF", ["UnetLoaderGGUF", "UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF","DualCLIPLoaderGGUF", "TripleCLIPLoaderGGUF"])
+    # DEBUG: Show everything this node map provides
+    all_defined_nodes = list(local_map.keys())
+    logging.info(f"MultiGPU: {module_path} local dict keys: {all_defined_nodes}")
+
+    # Wrap each node we want
+    for node in target_nodes:
+        if node in local_map:
+            mgpu_class = override_class(local_map[node])
+            NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = mgpu_class
+            logging.info(f"MultiGPU: Successfully wrapped {node} from {module_path}")
+        else:
+            logging.info(f"MultiGPU: Node '{node}' not found in {module_path}'s local dictionary")
+
+
+##############################################################################
+# EXAMPLE USAGE
+##############################################################################
+
+# 1) CORE NODES
+register_core_nodes([
+    "UNETLoader",
+    "VAELoader",
+    "CLIPLoader",
+    "DualCLIPLoader",
+    "TripleCLIPLoader",
+    "CheckpointLoaderSimple",
+    "ControlNetLoader",
+])
+
+# 2) CUSTOM NODES
+register_module("ComfyUI-GGUF", [
+    "UnetLoaderGGUF",
+    "UnetLoaderGGUFAdvanced",
+    "CLIPLoaderGGUF",
+    "DualCLIPLoaderGGUF",
+    "TripleCLIPLoaderGGUF",
+])
+
 register_module("x-flux-comfyui", ["LoadFluxControlNet"])
 register_module("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
 register_module("ComfyUI-LTXVideo", ["LTXVLoader"])
-register_module("ComfyUI-MMAudio", [    "MMAudioFeatureUtilsLoader", "MMAudioModelLoader", "MMAudioSampler"])
+register_module("ComfyUI-MMAudio", ["MMAudioFeatureUtilsLoader", "MMAudioModelLoader", "MMAudioSampler"])
 register_module("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4"])
 
-logging.info("MultiGPU: Registration complete")
-logging.info(f"MultiGPU: Registered nodes: {', '.join(sorted(NODE_CLASS_MAPPINGS.keys()))}")
+logging.info("MultiGPU: Registration complete.")
+logging.info("MultiGPU: Final mappings: " + ", ".join(sorted(NODE_CLASS_MAPPINGS.keys())))
