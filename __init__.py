@@ -70,8 +70,16 @@ def register_module(module_path, target_nodes):
         logging.info(f"MultiGPU: Found {module_path}, attempting to load")
         spec = importlib.util.spec_from_file_location(module_path, full_path)
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        logging.info(f"MultiGPU: Executed {module_path} initialization")
+        
+        try:
+            spec.loader.exec_module(module)
+            logging.info(f"MultiGPU: Executed {module_path} initialization")
+        except Exception as exec_error:
+            logging.error(f"MultiGPU: Failed to execute {module_path}: {exec_error}")
+            if hasattr(module, '__file__') and os.path.isfile(module.__file__):
+                with open(module.__file__, 'r', encoding='utf-8') as f:
+                    logging.error(f"MultiGPU: Failed module code:\n{f.read()}")
+            raise
 
         # Use the module's local dictionary instead of the global one
         local_map_name = "NODE_CLASS_MAPPINGS"
