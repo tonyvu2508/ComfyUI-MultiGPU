@@ -3,8 +3,10 @@ import copy
 import torch
 import comfy.model_management
 import os
+from pathlib import Path  # Add this import
 import importlib.util
 import logging
+import folder_paths
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.info("MultiGPU: Initialization started")
@@ -94,12 +96,133 @@ def register_module(module_path, target_nodes):
     except Exception as e:
         logging.info(f"MultiGPU: Error processing {module_path}: {str(e)}")
 
+def register_LTXmodule(module_path, node_list):
+    """Hard-coded registration for LTX Video nodes"""
+    global NODE_CLASS_MAPPINGS
+    
+    class LTXVLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "ckpt_name": (folder_paths.get_filename_list("checkpoints"),
+                                {"tooltip": "The name of the checkpoint (model) to load."}),
+                    "dtype": (["bfloat16", "float32"], {"default": "bfloat16"})
+                }
+            }
+        
+        RETURN_TYPES = ("MODEL", "VAE")
+        RETURN_NAMES = ("model", "vae")
+        FUNCTION = "load"
+        CATEGORY = "lightricks/LTXV"
+        TITLE = "LTXV Loader"
+        OUTPUT_NODE = False
+        
+        def load(self, ckpt_name, dtype):
+            # Get original node instance
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
+            
+            # Use original node to load model and VAE
+            model, vae = original_loader.load(ckpt_name, dtype)
+            
+            # Return original objects
+            return (model, vae)
+
+    ltx_nodes = {
+        "LTXVLoader": LTXVLoader
+    }
+
+    for node_name in node_list:
+        if node_name in ltx_nodes:
+            NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"] = override_class(ltx_nodes[node_name])
+            logging.info(f"MultiGPU: Registered hard-coded LTX node {node_name}")
+
+def register_Florence2module(module_path, node_list):
+    """Hard-coded registration for Florence2 nodes"""
+    global NODE_CLASS_MAPPINGS
+    
+    class DownloadAndLoadFlorence2Model:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {"required": {
+                "model": ([
+                    'microsoft/Florence-2-base',
+                    'microsoft/Florence-2-base-ft',
+                    'microsoft/Florence-2-large',
+                    'microsoft/Florence-2-large-ft',
+                    'HuggingFaceM4/Florence-2-DocVQA',
+                    'thwri/CogFlorence-2.1-Large',
+                    'thwri/CogFlorence-2.2-Large',
+                    'gokaygokay/Florence-2-SD3-Captioner',
+                    'gokaygokay/Florence-2-Flux-Large',
+                    'MiaoshouAI/Florence-2-base-PromptGen-v1.5',
+                    'MiaoshouAI/Florence-2-large-PromptGen-v1.5',
+                    'MiaoshouAI/Florence-2-base-PromptGen-v2.0',
+                    'MiaoshouAI/Florence-2-large-PromptGen-v2.0'
+                ], {"default": 'microsoft/Florence-2-base'}),
+                "precision": (['fp16','bf16','fp32'], {"default": 'fp16'}),
+                "attention": (['flash_attention_2', 'sdpa', 'eager'], {"default": 'sdpa'}),
+            },
+            "optional": {
+                "lora": ("PEFTLORA",),
+            }}
+        
+        RETURN_TYPES = ("FL2MODEL",)
+        RETURN_NAMES = ("florence2_model",)
+        FUNCTION = "loadmodel"
+        CATEGORY = "Florence2"
+        
+        def loadmodel(self, model, precision, attention, lora=None):
+            # Get original node instance
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["DownloadAndLoadFlorence2Model"]()
+            
+            # Use original node to load model
+            return original_loader.loadmodel(model, precision, attention, lora)
+
+    class Florence2ModelLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {"required": {
+                "model": ([item.name for item in Path(folder_paths.models_dir, "LLM").iterdir() if item.is_dir()], 
+                         {"tooltip": "models are expected to be in Comfyui/models/LLM folder"}),
+                "precision": (['fp16','bf16','fp32'],),
+                "attention": (['flash_attention_2', 'sdpa', 'eager'], {"default": 'sdpa'}),
+            },
+            "optional": {
+                "lora": ("PEFTLORA",),
+            }}
+        
+        RETURN_TYPES = ("FL2MODEL",)
+        RETURN_NAMES = ("florence2_model",)
+        FUNCTION = "loadmodel"
+        CATEGORY = "Florence2"
+        
+        def loadmodel(self, model, precision, attention, lora=None):
+            # Get original node instance
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["Florence2ModelLoader"]()
+            
+            # Use original node to load model
+            return original_loader.loadmodel(model, precision, attention, lora)
+
+    florence2_nodes = {
+        "Florence2ModelLoader": Florence2ModelLoader,
+        "DownloadAndLoadFlorence2Model": DownloadAndLoadFlorence2Model
+    }
+
+    for node_name in node_list:
+        if node_name in florence2_nodes:
+            NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"] = override_class(florence2_nodes[node_name])
+            logging.info(f"MultiGPU: Registered hard-coded Florence2 node {node_name}")
+
 # Register desired nodes
 register_module("",                         ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
 register_module("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
 register_module("x-flux-comfyui",           ["LoadFluxControlNet"])
-register_module("ComfyUI-Florence2",        ["Florence2ModelLoader","DownloadAndLoadFlorence2Model"])
-register_module("ComfyUI-LTXVideo",         ["LTXVLoader"])
+register_Florence2module("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
+register_LTXmodule("ComfyUI-LTXVideo", ["LTXVLoader"])
 register_module("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
 register_module("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
 
