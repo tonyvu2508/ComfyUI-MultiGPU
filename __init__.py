@@ -47,6 +47,57 @@ def override_class(cls):
 
 NODE_CLASS_MAPPINGS = {}
 
+def register_module_new(module_path, target_nodes):
+    """
+    Locates the source code definition of specified nodes within a module,
+    extracting the block from the 'class' declaration up to and including the second 'def' line,
+    and logs the definition. This is a self-contained function.
+
+    Args:
+        module_path: The path to the custom node module's directory.
+        target_nodes: A list of node class names to process.
+    """
+    module_dir = os.path.join("custom_nodes", module_path)
+    if not os.path.isdir(module_dir):
+        logging.warning(f"MultiGPU: Module directory {module_path} not found.")
+        return
+
+    for node_name in target_nodes:
+        node_definition_block = None
+        for filename in os.listdir(module_dir):
+            if filename.endswith(".py"):
+                filepath = os.path.join(module_dir, filename)
+                try:
+                    with open(filepath, 'r') as f:
+                        lines = f.readlines()
+
+                    start_index = -1
+                    second_def_index = -1
+                    def_count = 0
+                    in_class = False
+
+                    for i, line in enumerate(lines):
+                        if line.strip().startswith(f"class {node_name}"):
+                            start_index = i
+                            in_class = True
+                        elif in_class and line.strip().startswith("def "):
+                            def_count += 1
+                            if def_count == 2:
+                                second_def_index = i + 1
+                                break
+
+                    if start_index != -1 and second_def_index != -1:
+                        definition_lines = lines[start_index:second_def_index]
+                        node_definition_block = "".join(definition_lines)
+                        break # Found the definition, move to the next node
+
+                except Exception as e:
+                    logging.error(f"MultiGPU: Error processing file {filepath}: {str(e)}")
+
+        if node_definition_block:
+            logging.info(f"MultiGPU: Definition for node '{node_name}' in module '{module_path}':\n{node_definition_block}")
+        else:
+            logging.info(f"MultiGPU: Could not retrieve definition for node '{node_name}' in module '{module_path}'.")
 
 def check_module_exists(module_path):
     """Utility function to check if module exists"""
@@ -59,6 +110,7 @@ def check_module_exists(module_path):
         
     logging.info(f"MultiGPU: Found {module_path}, attempting to load")
     return True
+
 
 def register_module(module_path, target_nodes):
     try:
@@ -244,5 +296,14 @@ register_Florence2module("ComfyUI-Florence2", ["Florence2ModelLoader", "Download
 register_LTXmodule("ComfyUI-LTXVideo", ["LTXVLoader"])
 register_module("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
 register_module("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
+
+
+register_module_new("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
+register_module_new("x-flux-comfyui",           ["LoadFluxControlNet"])
+register_module_new("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
+register_module_new("ComfyUI-LTXVideo", ["LTXVLoader"])
+register_module_new("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
+register_module_new("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
+
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
