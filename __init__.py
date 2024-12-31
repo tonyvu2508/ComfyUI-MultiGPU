@@ -47,6 +47,19 @@ def override_class(cls):
 
 NODE_CLASS_MAPPINGS = {}
 
+
+def check_module_exists(module_path):
+    """Utility function to check if module exists"""
+    full_path = os.path.join("custom_nodes", module_path, "__init__.py")
+    logging.info(f"MultiGPU: Checking for module at {full_path}")
+    
+    if not os.path.exists(full_path):
+        logging.info(f"MultiGPU: Module {module_path} not found - skipping")
+        return False
+        
+    logging.info(f"MultiGPU: Found {module_path}, attempting to load")
+    return True
+
 def register_module(module_path, target_nodes):
     try:
         # For core nodes, skip module loading and just register from the global mappings
@@ -100,6 +113,9 @@ def register_LTXmodule(module_path, node_list):
     """Hard-coded registration for LTX Video nodes"""
     global NODE_CLASS_MAPPINGS
     
+    if not check_module_exists(module_path):
+        return
+        
     class LTXVLoader:
         @classmethod
         def INPUT_TYPES(s):
@@ -142,6 +158,9 @@ def register_Florence2module(module_path, node_list):
     """Hard-coded registration for Florence2 nodes"""
     global NODE_CLASS_MAPPINGS
     
+    if not check_module_exists(module_path):
+        return
+        
     class DownloadAndLoadFlorence2Model:
         @classmethod
         def INPUT_TYPES(s):
