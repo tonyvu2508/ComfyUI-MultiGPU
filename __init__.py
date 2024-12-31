@@ -96,6 +96,29 @@ def register_module_new(module_path, target_nodes):
 
         if node_definition_block:
             logging.info(f"MultiGPU: Definition for node '{node_name}' in module '{module_path}':\n{node_definition_block}")
+            # Add the wrapper class definition here
+            wrapper_code_lines = [
+                f"            # Get original node instance",
+                f"            from nodes import NODE_CLASS_MAPPINGS",
+                f"            original_loader = NODE_CLASS_MAPPINGS[\"{node_name}\"]()"
+            ]
+            node_definition_block += "\n".join(wrapper_code_lines)
+
+            # Extract the function name and arguments from the last line of the definition block
+            last_line = definition_lines[-1].strip()
+            if last_line.startswith("def "):
+                method_declaration = last_line[len("def "):].rstrip(":")
+                method_name, args_str = method_declaration.split("(", 1)
+                # Remove "self, " if present
+                args_str = args_str.replace("self, ", "").replace("self,", "").strip()
+                # Construct the return line
+                return_line = f"            return original_loader.{method_name}({args_str}"
+
+                node_definition_block += "\n" + return_line
+                logging.info(f"MultiGPU: Concatenated lines for node '{node_name}':\n{node_definition_block}")
+            else:
+                logging.warning(f"MultiGPU: Could not parse the last line of definition for node '{node_name}'.")
+
         else:
             logging.info(f"MultiGPU: Could not retrieve definition for node '{node_name}' in module '{module_path}'.")
 
@@ -192,10 +215,12 @@ def register_LTXmodule(module_path, node_list):
             original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
             
             # Use original node to load model and VAE
-            model, vae = original_loader.load(ckpt_name, dtype)
+            # model, vae = original_loader.load(ckpt_name, dtype)
             
             # Return original objects
-            return (model, vae)
+            #return (model, vae)
+
+            return original_loader.load(ckpt_name, dtype)
 
     ltx_nodes = {
         "LTXVLoader": LTXVLoader
