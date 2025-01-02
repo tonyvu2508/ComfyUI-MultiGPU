@@ -53,8 +53,15 @@ def register_module_new(module_path, target_nodes):
         logging.warning(f"MultiGPU: Module directory {module_path} not found.")
         return
 
-    node_classes = {}
+    # Shared namespace for all nodes in module
+    shared_namespace = {}
+    exec("import folder_paths", shared_namespace)
+    exec("from pathlib import Path", shared_namespace)
+    exec("import comfy", shared_namespace)
+    exec("import comfy.utils", shared_namespace)
+    exec("import comfy.model_management", shared_namespace)
     
+    node_definitions = {}
     for node_name in target_nodes:
         node_definition_block = None
         for filename in os.listdir(module_dir):
@@ -88,27 +95,24 @@ def register_module_new(module_path, target_nodes):
                             " " * (last_func_indent + 4) + "return original_loader.load(ckpt_name, dtype)\n"
                         ]
                         node_definition_block = "".join(definition_lines) + "".join(wrapper_code)
+                        node_definitions[node_name] = node_definition_block
                         break
 
                 except Exception as e:
                     logging.error(f"MultiGPU: Error processing file {filepath}: {str(e)}")
                     continue
 
-        if node_definition_block:
-            namespace = {}
-            exec("import folder_paths", namespace)
-            exec("from pathlib import Path", namespace)
-            
-            try:
-                exec(node_definition_block, namespace)
-                node_classes[node_name] = namespace[node_name]
-                logging.info(f"MultiGPU: Successfully created class for {node_name}")
-            except Exception as e:
-                logging.error(f"MultiGPU: Error executing class definition for {node_name}: {str(e)}")
+    for node_name, definition in node_definitions.items():
+        try:
+            exec(definition, shared_namespace)
+            logging.info(f"MultiGPU: Successfully created class for {node_name}")
+        except Exception as e:
+            logging.error(f"MultiGPU: Error executing class definition for {node_name}: {str(e)}")
 
-    for node_name, node_class in node_classes.items():
-        NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"] = override_class(node_class)
-        logging.info(f"MultiGPU: Registered {node_name} with MultiGPU wrapper")
+    for node_name in node_definitions.keys():
+        if node_name in shared_namespace:
+            NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"] = override_class(shared_namespace[node_name])
+            logging.info(f"MultiGPU: Registered {node_name} with MultiGPU wrapper")
 
 
 def check_module_exists(module_path):
@@ -296,7 +300,7 @@ def register_Florence2module(module_path, node_list):
 
 # Register desired nodes
 register_module("",                         ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
-register_module("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
+#register_module("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
 #register_module("x-flux-comfyui",           ["LoadFluxControlNet"])
 #register_Florence2module("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
 #register_LTXmodule("ComfyUI-LTXVideo", ["LTXVLoader"])
@@ -304,12 +308,12 @@ register_module("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdv
 #register_module("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
 
 
-#register_module_new("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
-#register_module_new("x-flux-comfyui",           ["LoadFluxControlNet"])
-#register_module_new("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
+register_module_new("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
+register_module_new("x-flux-comfyui",           ["LoadFluxControlNet"])
+register_module_new("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
 register_module_new("ComfyUI-LTXVideo", ["LTXVLoader"])
-#register_module_new("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
-#register_module_new("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
+register_module_new("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
+register_module_new("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
 
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
