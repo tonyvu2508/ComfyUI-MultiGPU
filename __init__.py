@@ -47,6 +47,36 @@ def override_class(cls):
 
 NODE_CLASS_MAPPINGS = {}
 
+
+def inspect_node(node_name, node_class, source="unknown"):
+    for attr in dir(node_class):
+            if not attr.startswith("__"):
+                # Skip INPUT_TYPES and override methods
+                if attr in ["INPUT_TYPES", "override"]:
+                    continue
+
+                try:
+                    value = getattr(node_class, attr)
+                    if callable(value):
+                        import inspect
+
+                        # Get underlying function for classmethods
+                        func = value.get(None, node_class).func if isinstance(value, classmethod) else value
+
+                        stripped_class = node_name.replace("MultiGPU", "")
+
+                        # Method signature
+                        sig = inspect.signature(func)
+                        stripped_method = f"{attr}{sig}"
+                        stripped_method = stripped_method.replace("(self, ", "( ")
+                        logging.info(f"        def {attr}{sig}:")
+                        logging.info(f"            from nodes import NODE_CLASS_MAPPINGS")
+                        logging.info(f"            original_loader = NODE_CLASS_MAPPINGS[\"{stripped_class}\"]()")
+                        logging.info(f"            return original_loader.{stripped_method}")
+
+                except Exception as e:
+                    logging.info(f"METHODERROR{attr}: {repr(e)}")
+
 def register_module_new(module_path, target_nodes):
     module_dir = os.path.join("custom_nodes", module_path)
     if not os.path.isdir(module_dir):
@@ -60,7 +90,7 @@ def register_module_new(module_path, target_nodes):
     exec("import comfy", shared_namespace)
     exec("import comfy.utils", shared_namespace)
     exec("import comfy.model_management", shared_namespace)
-    
+
     node_definitions = {}
     for node_name in target_nodes:
         node_definition_block = None
@@ -83,18 +113,46 @@ def register_module_new(module_path, target_nodes):
                         elif in_class and line.strip().startswith("def "):
                             def_count += 1
                             if def_count == 2:
-                                second_def_index = i + 1
+                                second_def_index = i
                                 break
 
                     if start_index != -1 and second_def_index != -1:
                         definition_lines = lines[start_index:second_def_index]
-                        last_func_indent = len(definition_lines[-1]) - len(definition_lines[-1].lstrip())
-                        wrapper_code = [
-                            " " * (last_func_indent + 4) + "from nodes import NODE_CLASS_MAPPINGS\n",
-                            " " * (last_func_indent + 4) + f"original_loader = NODE_CLASS_MAPPINGS[\"{node_name}\"]()\n",
-                            " " * (last_func_indent + 4) + "return original_loader.load(ckpt_name, dtype)\n"
-                        ]
-                        node_definition_block = "".join(definition_lines) + "".join(wrapper_code)
+                        node_definition_block = definition_lines
+
+                        node_class = NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"]
+
+                        for attr in dir(node_class):
+                            if not attr.startswith("__"):
+                                # Skip INPUT_TYPES and override methods
+                                if attr in ["INPUT_TYPES", "override"]:
+                                    continue
+
+                                try:
+                                    value = getattr(node_class, attr)
+                                    if callable(value):
+                                        import inspect
+                                
+                                        # Get underlying function for classmethods
+                                        func = value.get(None, node_class).func if isinstance(value, classmethod) else value
+                                
+                                        stripped_class = node_name.replace("MultiGPU", "")
+                                
+                                        # Method signature
+                                        sig = inspect.signature(func)
+                                        stripped_method = f"{attr}{sig}"
+                                        stripped_method = stripped_method.replace("(self, ", "( ")
+                                        
+                                        node_definition_block.append(f"        def {attr}{sig}:\n")
+                                        node_definition_block.append(f"            from nodes import NODE_CLASS_MAPPINGS\n")
+                                        node_definition_block.append(f'            original_loader = NODE_CLASS_MAPPINGS["{stripped_class}"]()\n')
+                                        node_definition_block.append(f"            return original_loader.{stripped_method}\n")
+
+
+                                except Exception as e:
+                                    logging.info(f"METHODERROR{attr}: {repr(e)}")
+
+                        logging.info(f"node_definition_block:\n{''.join(node_definition_block)}")
                         node_definitions[node_name] = node_definition_block
                         break
 
@@ -104,7 +162,6 @@ def register_module_new(module_path, target_nodes):
 
     for node_name, definition in node_definitions.items():
         try:
-            exec(definition, shared_namespace)
             logging.info(f"MultiGPU: Successfully created class for {node_name}")
         except Exception as e:
             logging.error(f"MultiGPU: Error executing class definition for {node_name}: {str(e)}")
@@ -113,7 +170,6 @@ def register_module_new(module_path, target_nodes):
         if node_name in shared_namespace:
             NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"] = override_class(shared_namespace[node_name])
             logging.info(f"MultiGPU: Registered {node_name} with MultiGPU wrapper")
-
 
 def check_module_exists(module_path):
     """Utility function to check if module exists"""
@@ -170,6 +226,7 @@ def register_module(module_path, target_nodes):
             if node in local_map:
                 mgpu_class = override_class(local_map[node])
                 NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = mgpu_class
+                inspect_node(f"{node}MultiGPU", NODE_CLASS_MAPPINGS[f"{node}MultiGPU"], f"wrapped {module_path}")
                 logging.info(f"MultiGPU: Successfully wrapped {node} from {module_path}")
             else:
                 logging.info(f"MultiGPU: Node '{node}' not found in {module_path}'s local dictionary")
@@ -206,7 +263,14 @@ def register_LTXmodule(module_path, node_list):
             from nodes import NODE_CLASS_MAPPINGS
             original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
             return original_loader.load(ckpt_name, dtype)
-
+        def _load_unet(self, load_device, offload_device, weights, num_latent_channels, dtype, config=None ):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
+            return original_loader._load_unet(load_device, offload_device, weights, num_latent_channels, dtype, config=None )
+        def _load_vae(self, weights, config=None):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
+            return original_loader._load_vae(weights, config=None)
     ltx_nodes = {
         "LTXVLoader": LTXVLoader
     }
@@ -300,20 +364,21 @@ def register_Florence2module(module_path, node_list):
 
 # Register desired nodes
 register_module("",                         ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
-#register_module("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
+register_module("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
 #register_module("x-flux-comfyui",           ["LoadFluxControlNet"])
 #register_Florence2module("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
-#register_LTXmodule("ComfyUI-LTXVideo", ["LTXVLoader"])
+register_LTXmodule("ComfyUI-LTXVideo", ["LTXVLoader"])
 #register_module("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
 #register_module("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
 
 
 register_module_new("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
-register_module_new("x-flux-comfyui",           ["LoadFluxControlNet"])
-register_module_new("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
+#register_module_new("x-flux-comfyui",           ["LoadFluxControlNet"])
+#register_module_new("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
 register_module_new("ComfyUI-LTXVideo", ["LTXVLoader"])
-register_module_new("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
-register_module_new("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
+#register_module("", ["LTXVLoader"])
+#register_module_new("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
+#register_module_new("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
 
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
