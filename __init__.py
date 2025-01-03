@@ -510,20 +510,110 @@ def register_CLIPLoaderGGUFMultiGPU():
     NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFMultiGPU"] = TripleCLIPLoaderGGUFMultiGPU
     logging.info(f"MultiGPU: Registered TripleCLIPLoaderGGUFMultiGPU")
  
+def register_PulidModelLoader():
+
+    global NODE_CLASS_MAPPINGS
+
+    class PulidModelLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {"required": { "pulid_file": (folder_paths.get_filename_list("pulid"), )}}
+
+        RETURN_TYPES = ("PULID",)
+        FUNCTION = "load_model"
+        CATEGORY = "pulid"
+
+        def load_model(self, pulid_file):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["PulidModelLoader"]()
+            return original_loader.load_model(pulid_file)
+        
+    NODE_CLASS_MAPPINGS["PulidModelLoaderMultiGPU"] = override_class(PulidModelLoader)
+    logging.info(f"MultiGPU: Registered PulidModelLoaderMultiGPU")
+
+def register_PulidInsightFaceLoader():
+
+    global NODE_CLASS_MAPPINGS
+
+    class PulidInsightFaceLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "provider": (["CPU", "CUDA", "ROCM", "CoreML"], ),
+                },
+            }
+
+        RETURN_TYPES = ("FACEANALYSIS",)
+        FUNCTION = "load_insightface"
+        CATEGORY = "pulid"
+
+        def load_insightface(self, provider):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["PulidInsightFaceLoader"]()
+            return original_loader.load_insightface(provider)
+        
+    NODE_CLASS_MAPPINGS["PulidInsightFaceLoaderMultiGPU"] = override_class(PulidInsightFaceLoader)
+    logging.info(f"MultiGPU: Registered PulidInsightFaceLoaderMultiGPU")
+
+def register_PulidEvaClipLoader():
+
+    global NODE_CLASS_MAPPINGS
+
+    class PulidEvaClipLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {},
+            }
+
+        RETURN_TYPES = ("EVA_CLIP",)
+        FUNCTION = "load_eva_clip"
+        CATEGORY = "pulid"
+
+        def load_eva_clip(self):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["PulidEvaClipLoader"]()
+            return original_loader.load_eva_clip()
+        
+    NODE_CLASS_MAPPINGS["PulidEvaClipLoaderMultiGPU"] = override_class(PulidEvaClipLoader)
+    logging.info(f"MultiGPU: Registered PulidEvaClipLoaderMultiGPU")
+
+def check_module_exists(module_path):
+    full_path = os.path.join("custom_nodes", module_path)
+    logging.info(f"MultiGPU: Checking for module at {full_path}")
+    
+    if not os.path.exists(full_path):
+        logging.info(f"MultiGPU: Module {module_path} not found - skipping")
+        return False
+        
+    logging.info(f"MultiGPU: Found {module_path}, creating compatible MultiGPU nodes")
+    return True
 
 # Register desired nodes
 register_module("",                         ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
 
-register_LTXVLoaderMultiGPU()
-register_Florence2ModelLoaderMultiGPU()
-register_DownloadAndLoadFlorence2ModelMultiGPU()
-register_CheckpointLoaderNF4()
-register_LoadFluxControlNetMultiGPU()
-register_MMAudioModelLoaderMultiGPU()
-register_MMAudioFeatureUtilsLoaderMultiGPU()
-register_MMAudioSamplerMultiGPU()
-register_UnetLoaderGGUFMultiGPU()
-register_CLIPLoaderGGUFMultiGPU()
+if check_module_exists("ComfyUI-LTXVideo"):
+    register_LTXVLoaderMultiGPU()
+if check_module_exists("ComfyUI-Florence2"):
+    register_Florence2ModelLoaderMultiGPU()
+    register_DownloadAndLoadFlorence2ModelMultiGPU()
+if check_module_exists("ComfyUI_bitsandbytes_NF4"):
+    register_CheckpointLoaderNF4()
+if check_module_exists("x-flux-comfyui"):
+    register_LoadFluxControlNetMultiGPU()
+if check_module_exists("ComfyUI-MMAudio"):
+    register_MMAudioModelLoaderMultiGPU()
+    register_MMAudioFeatureUtilsLoaderMultiGPU()
+    register_MMAudioSamplerMultiGPU()
+if check_module_exists("ComfyUI-GGUF"):
+    register_UnetLoaderGGUFMultiGPU()
+    register_CLIPLoaderGGUFMultiGPU()
+if check_module_exists("PuLID_ComfyUI"):
+    register_PulidModelLoader()
+    register_PulidInsightFaceLoader()
+    register_PulidEvaClipLoader()
+
 
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
