@@ -47,6 +47,7 @@ def override_class(cls):
 
 NODE_CLASS_MAPPINGS = {}
 
+
 def register_module(module_path, target_nodes):
     try:
         # For core nodes, skip module loading and just register from the global mappings
