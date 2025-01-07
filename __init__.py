@@ -48,142 +48,6 @@ def override_class(cls):
 NODE_CLASS_MAPPINGS = {}
 
 
-def inspect_node(node_name, node_class, source="unknown"):
-    for attr in dir(node_class):
-            if not attr.startswith("__"):
-                # Skip INPUT_TYPES and override methods
-                if attr in ["INPUT_TYPES", "override"]:
-                    continue
-
-                try:
-                    value = getattr(node_class, attr)
-                    if callable(value):
-                        import inspect
-
-                        # Get underlying function for classmethods
-                        func = value.get(None, node_class).func if isinstance(value, classmethod) else value
-
-                        stripped_class = node_name.replace("MultiGPU", "")
-
-                        # Method signature
-                        sig = inspect.signature(func)
-                        stripped_method = f"{attr}{sig}"
-                        stripped_method = stripped_method.replace("(self, ", "( ")
-                        logging.info(f"        def {attr}{sig}:")
-                        logging.info(f"            from nodes import NODE_CLASS_MAPPINGS")
-                        logging.info(f"            original_loader = NODE_CLASS_MAPPINGS[\"{stripped_class}\"]()")
-                        logging.info(f"            return original_loader.{stripped_method}")
-
-                except Exception as e:
-                    logging.info(f"METHODERROR{attr}: {repr(e)}")
-
-def register_module_new(module_path, target_nodes):
-    module_dir = os.path.join("custom_nodes", module_path)
-    if not os.path.isdir(module_dir):
-        logging.warning(f"MultiGPU: Module directory {module_path} not found.")
-        return
-
-    # Shared namespace for all nodes in module
-    shared_namespace = {}
-    exec("import folder_paths", shared_namespace)
-    exec("from pathlib import Path", shared_namespace)
-    exec("import comfy", shared_namespace)
-    exec("import comfy.utils", shared_namespace)
-    exec("import comfy.model_management", shared_namespace)
-
-    node_definitions = {}
-    for node_name in target_nodes:
-        node_definition_block = None
-        for filename in os.listdir(module_dir):
-            if filename.endswith(".py"):
-                filepath = os.path.join(module_dir, filename)
-                try:
-                    with open(filepath, 'r') as f:
-                        lines = f.readlines()
-
-                    start_index = -1
-                    second_def_index = -1
-                    def_count = 0
-                    in_class = False
-
-                    for i, line in enumerate(lines):
-                        if line.strip().startswith(f"class {node_name}"):
-                            start_index = i
-                            in_class = True
-                        elif in_class and line.strip().startswith("def "):
-                            def_count += 1
-                            if def_count == 2:
-                                second_def_index = i
-                                break
-
-                    if start_index != -1 and second_def_index != -1:
-                        definition_lines = lines[start_index:second_def_index]
-                        node_definition_block = definition_lines
-
-                        node_class = NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"]
-
-                        for attr in dir(node_class):
-                            if not attr.startswith("__"):
-                                # Skip INPUT_TYPES and override methods
-                                if attr in ["INPUT_TYPES", "override"]:
-                                    continue
-
-                                try:
-                                    value = getattr(node_class, attr)
-                                    if callable(value):
-                                        import inspect
-                                
-                                        # Get underlying function for classmethods
-                                        func = value.get(None, node_class).func if isinstance(value, classmethod) else value
-                                
-                                        stripped_class = node_name.replace("MultiGPU", "")
-                                
-                                        # Method signature
-                                        sig = inspect.signature(func)
-                                        stripped_method = f"{attr}{sig}"
-                                        stripped_method = stripped_method.replace("(self, ", "( ")
-                                        
-                                        node_definition_block.append(f"        def {attr}{sig}:\n")
-                                        node_definition_block.append(f"            from nodes import NODE_CLASS_MAPPINGS\n")
-                                        node_definition_block.append(f'            original_loader = NODE_CLASS_MAPPINGS["{stripped_class}"]()\n')
-                                        node_definition_block.append(f"            return original_loader.{stripped_method}\n")
-
-
-                                except Exception as e:
-                                    logging.info(f"METHODERROR{attr}: {repr(e)}")
-
-                        logging.info(f"node_definition_block:\n{''.join(node_definition_block)}")
-                        node_definitions[node_name] = node_definition_block
-                        break
-
-                except Exception as e:
-                    logging.error(f"MultiGPU: Error processing file {filepath}: {str(e)}")
-                    continue
-
-    for node_name, definition in node_definitions.items():
-        try:
-            logging.info(f"MultiGPU: Successfully created class for {node_name}")
-        except Exception as e:
-            logging.error(f"MultiGPU: Error executing class definition for {node_name}: {str(e)}")
-
-    for node_name in node_definitions.keys():
-        if node_name in shared_namespace:
-            NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"] = override_class(shared_namespace[node_name])
-            logging.info(f"MultiGPU: Registered {node_name} with MultiGPU wrapper")
-
-def check_module_exists(module_path):
-    """Utility function to check if module exists"""
-    full_path = os.path.join("custom_nodes", module_path, "__init__.py")
-    logging.info(f"MultiGPU: Checking for module at {full_path}")
-    
-    if not os.path.exists(full_path):
-        logging.info(f"MultiGPU: Module {module_path} not found - skipping")
-        return False
-        
-    logging.info(f"MultiGPU: Found {module_path}, attempting to load")
-    return True
-
-
 def register_module(module_path, target_nodes):
     try:
         # For core nodes, skip module loading and just register from the global mappings
@@ -198,48 +62,11 @@ def register_module(module_path, target_nodes):
                     logging.info(f"MultiGPU: Core node {node} not found - this shouldn't happen!")
             return
 
-        # For custom nodes, try to load the module first
-        full_path = os.path.join("custom_nodes", module_path, "__init__.py")
-        logging.info(f"MultiGPU: Checking for module at {full_path}")
-
-        if not os.path.exists(full_path):
-            logging.info(f"MultiGPU: Module {module_path} not found - skipping")
-            return
-
-        logging.info(f"MultiGPU: Found {module_path}, attempting to load")
-        spec = importlib.util.spec_from_file_location(module_path, full_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        logging.info(f"MultiGPU: Executed {module_path} initialization")
-
-        # Use the module's local dictionary instead of the global one
-        local_map_name = "NODE_CLASS_MAPPINGS"
-        local_map = getattr(module, local_map_name, None)
-        if not local_map:
-            logging.info(f"MultiGPU: {module_path} has no '{local_map_name}' dictionary, skipping override.")
-            return
-
-        all_defined_nodes = list(local_map.keys())
-        logging.info(f"MultiGPU: {module_path} local dict keys: {all_defined_nodes}")
-
-        for node in target_nodes:
-            if node in local_map:
-                mgpu_class = override_class(local_map[node])
-                NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = mgpu_class
-                inspect_node(f"{node}MultiGPU", NODE_CLASS_MAPPINGS[f"{node}MultiGPU"], f"wrapped {module_path}")
-                logging.info(f"MultiGPU: Successfully wrapped {node} from {module_path}")
-            else:
-                logging.info(f"MultiGPU: Node '{node}' not found in {module_path}'s local dictionary")
-
     except Exception as e:
         logging.info(f"MultiGPU: Error processing {module_path}: {str(e)}")
 
-def register_LTXmodule(module_path, node_list):
-    """Hard-coded registration for LTX Video nodes"""
+def register_LTXVLoaderMultiGPU():
     global NODE_CLASS_MAPPINGS
-    
-    if not check_module_exists(module_path):
-        return
         
     class LTXVLoader:
         @classmethod
@@ -271,22 +98,41 @@ def register_LTXmodule(module_path, node_list):
             from nodes import NODE_CLASS_MAPPINGS
             original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
             return original_loader._load_vae(weights, config=None)
-    ltx_nodes = {
-        "LTXVLoader": LTXVLoader
-    }
+    NODE_CLASS_MAPPINGS["LTXVLoaderMultiGPU"] = override_class(LTXVLoader)
 
-    for node_name in node_list:
-        if node_name in ltx_nodes:
-            NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"] = override_class(ltx_nodes[node_name])
-            logging.info(f"MultiGPU: Registered hard-coded LTX node {node_name}")
+    logging.info(f"MultiGPU: Registered LTXVLoaderMultiGPU")
 
-def register_Florence2module(module_path, node_list):
-    """Hard-coded registration for Florence2 nodes"""
+def register_Florence2ModelLoaderMultiGPU():
     global NODE_CLASS_MAPPINGS
     
-    if not check_module_exists(module_path):
-        return
+    class Florence2ModelLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {"required": {
+                "model": ([item.name for item in Path(folder_paths.models_dir, "LLM").iterdir() if item.is_dir()], 
+                         {"tooltip": "models are expected to be in Comfyui/models/LLM folder"}),
+                "precision": (['fp16','bf16','fp32'],),
+                "attention": (['flash_attention_2', 'sdpa', 'eager'], {"default": 'sdpa'}),
+            },
+            "optional": {
+                "lora": ("PEFTLORA",),
+            }}
         
+        RETURN_TYPES = ("FL2MODEL",)
+        RETURN_NAMES = ("florence2_model",)
+        FUNCTION = "loadmodel"
+        CATEGORY = "Florence2"
+        
+        def loadmodel(self, model, precision, attention, lora=None):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["Florence2ModelLoader"]()
+            return original_loader.loadmodel(model, precision, attention, lora)
+    NODE_CLASS_MAPPINGS["Florence2ModelLoaderMultiGPU"] = override_class(Florence2ModelLoader)
+    logging.info(f"MultiGPU: Registered Florence2ModelLoaderMultiGPU")    
+    
+def register_DownloadAndLoadFlorence2ModelMultiGPU(): 
+    global NODE_CLASS_MAPPINGS
+
     class DownloadAndLoadFlorence2Model:
         @classmethod
         def INPUT_TYPES(s):
@@ -319,66 +165,455 @@ def register_Florence2module(module_path, node_list):
         CATEGORY = "Florence2"
         
         def loadmodel(self, model, precision, attention, lora=None):
-            # Get original node instance
             from nodes import NODE_CLASS_MAPPINGS
             original_loader = NODE_CLASS_MAPPINGS["DownloadAndLoadFlorence2Model"]()
-            
-            # Use original node to load model
             return original_loader.loadmodel(model, precision, attention, lora)
+    NODE_CLASS_MAPPINGS["DownloadAndLoadFlorence2ModelMultiGPU"] = override_class(DownloadAndLoadFlorence2Model)
+    logging.info(f"MultiGPU: Registered DownloadAndLoadFlorence2ModelMultiGPU")
 
-    class Florence2ModelLoader:
+def register_CheckpointLoaderNF4():
+    global NODE_CLASS_MAPPINGS
+
+    class CheckpointLoaderNF4:
         @classmethod
         def INPUT_TYPES(s):
-            return {"required": {
-                "model": ([item.name for item in Path(folder_paths.models_dir, "LLM").iterdir() if item.is_dir()], 
-                         {"tooltip": "models are expected to be in Comfyui/models/LLM folder"}),
-                "precision": (['fp16','bf16','fp32'],),
-                "attention": (['flash_attention_2', 'sdpa', 'eager'], {"default": 'sdpa'}),
-            },
-            "optional": {
-                "lora": ("PEFTLORA",),
-            }}
-        
-        RETURN_TYPES = ("FL2MODEL",)
-        RETURN_NAMES = ("florence2_model",)
-        FUNCTION = "loadmodel"
-        CATEGORY = "Florence2"
-        
-        def loadmodel(self, model, precision, attention, lora=None):
-            # Get original node instance
+            return {"required": { "ckpt_name": (folder_paths.get_filename_list("checkpoints"), ),
+                                }}
+        RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+        FUNCTION = "load_checkpoint"
+
+        CATEGORY = "loaders"
+
+
+        def load_checkpoint(self, ckpt_name):
             from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["Florence2ModelLoader"]()
-            
-            # Use original node to load model
-            return original_loader.loadmodel(model, precision, attention, lora)
+            original_loader = NODE_CLASS_MAPPINGS["CheckpointLoaderNF4"]()
+            return original_loader.load_checkpoint(ckpt_name)
+    
+    NODE_CLASS_MAPPINGS["CheckpointLoaderNF4MultiGPU"] = override_class(CheckpointLoaderNF4)
+    logging.info(f"MultiGPU: Registered CheckpointLoaderNF4MultiGPU")
 
-    florence2_nodes = {
-        "Florence2ModelLoader": Florence2ModelLoader,
-        "DownloadAndLoadFlorence2Model": DownloadAndLoadFlorence2Model
-    }
+def register_CheckpointLoaderNF4():
+    global NODE_CLASS_MAPPINGS
 
-    for node_name in node_list:
-        if node_name in florence2_nodes:
-            NODE_CLASS_MAPPINGS[f"{node_name}MultiGPU"] = override_class(florence2_nodes[node_name])
-            logging.info(f"MultiGPU: Registered hard-coded Florence2 node {node_name}")
+    class CheckpointLoaderNF4:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {"required": { "ckpt_name": (folder_paths.get_filename_list("checkpoints"), ),
+                                }}
+        RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+        FUNCTION = "load_checkpoint"
+
+        CATEGORY = "loaders"
+
+
+        def load_checkpoint(self, ckpt_name):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["CheckpointLoaderNF4"]()
+            return original_loader.load_checkpoint(ckpt_name)
+    
+    NODE_CLASS_MAPPINGS["CheckpointLoaderNF4MultiGPU"] = override_class(CheckpointLoaderNF4)
+    logging.info(f"MultiGPU: Registered CheckpointLoaderNF4MultiGPU")
+
+def register_LoadFluxControlNetMultiGPU():
+    global NODE_CLASS_MAPPINGS
+
+    class LoadFluxControlNet:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {"required": {"model_name": (["flux-dev", "flux-dev-fp8", "flux-schnell"],),
+                                "controlnet_path": (folder_paths.get_filename_list("xlabs_controlnets"), ),
+                                }}
+
+        RETURN_TYPES = ("FluxControlNet",)
+        RETURN_NAMES = ("ControlNet",)
+        FUNCTION = "loadmodel"
+        CATEGORY = "XLabsNodes"
+
+        def loadmodel(self, model_name, controlnet_path):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["LoadFluxControlNet"]()
+            return original_loader.loadmodel(model_name, controlnet_path)
+        
+    NODE_CLASS_MAPPINGS["LoadFluxControlNetMultiGPU"] = override_class(LoadFluxControlNet)
+    logging.info(f"MultiGPU: Registered LoadFluxControlNetMultiGPU")
+
+def register_MMAudioModelLoaderMultiGPU():
+
+    global NODE_CLASS_MAPPINGS
+
+    class MMAudioModelLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "mmaudio_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from the 'ComfyUI/models/mmaudio' -folder",}),
+                
+                "base_precision": (["fp16", "fp32", "bf16"], {"default": "fp16"}),
+                },
+            }
+
+        RETURN_TYPES = ("MMAUDIO_MODEL",)
+        RETURN_NAMES = ("mmaudio_model", )
+        FUNCTION = "loadmodel"
+        CATEGORY = "MMAudio"
+
+        def loadmodel(self, mmaudio_model, base_precision):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["MMAudioModelLoader"]()
+            return original_loader.loadmodel(mmaudio_model, base_precision)
+        
+    NODE_CLASS_MAPPINGS["MMAudioModelLoaderMultiGPU"] = override_class(MMAudioModelLoader)
+    logging.info(f"MultiGPU: Registered MMAudioModelLoaderMultiGPU")
+
+def register_MMAudioModelLoaderMultiGPU():
+
+    global NODE_CLASS_MAPPINGS
+
+    class MMAudioModelLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "mmaudio_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from the 'ComfyUI/models/mmaudio' -folder",}),
+                
+                "base_precision": (["fp16", "fp32", "bf16"], {"default": "fp16"}),
+                },
+            }
+
+        RETURN_TYPES = ("MMAUDIO_MODEL",)
+        RETURN_NAMES = ("mmaudio_model", )
+        FUNCTION = "loadmodel"
+        CATEGORY = "MMAudio"
+
+        def loadmodel(self, mmaudio_model, base_precision):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["MMAudioModelLoader"]()
+            return original_loader.loadmodel(mmaudio_model, base_precision)
+        
+    NODE_CLASS_MAPPINGS["MMAudioModelLoaderMultiGPU"] = override_class(MMAudioModelLoader)
+    logging.info(f"MultiGPU: Registered MMAudioModelLoaderMultiGPU")
+
+def register_MMAudioFeatureUtilsLoaderMultiGPU():
+
+    global NODE_CLASS_MAPPINGS
+
+
+    class MMAudioFeatureUtilsLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "vae_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from 'ComfyUI/models/mmaudio'"}),
+                    "synchformer_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from 'ComfyUI/models/mmaudio'"}),
+                    "clip_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from 'ComfyUI/models/mmaudio'"}),
+                },
+                "optional": {
+                "bigvgan_vocoder_model": ("VOCODER_MODEL", {"tooltip": "These models are loaded from 'ComfyUI/models/mmaudio'"}),
+                    "mode": (["16k", "44k"], {"default": "44k"}),
+                    "precision": (["fp16", "fp32", "bf16"],
+                        {"default": "fp16"}
+                    ),
+                }
+            }
+
+        RETURN_TYPES = ("MMAUDIO_FEATUREUTILS",)
+        RETURN_NAMES = ("mmaudio_featureutils", )
+        FUNCTION = "loadmodel"
+        CATEGORY = "MMAudio"
+
+        def loadmodel(self, vae_model, precision, synchformer_model, clip_model, mode, bigvgan_vocoder_model=None):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["MMAudioFeatureUtilsLoader"]()
+            return original_loader.loadmodel(vae_model, precision, synchformer_model, clip_model, mode, bigvgan_vocoder_model)
+    
+    NODE_CLASS_MAPPINGS["MMAudioFeatureUtilsLoaderMultiGPU"] = override_class(MMAudioFeatureUtilsLoader)
+    logging.info(f"MultiGPU: Registered MMAudioFeatureUtilsLoaderMultiGPU")
+
+def register_MMAudioSamplerMultiGPU():
+
+    global NODE_CLASS_MAPPINGS
+
+    class MMAudioSampler:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "mmaudio_model": ("MMAUDIO_MODEL",),
+                    "feature_utils": ("MMAUDIO_FEATUREUTILS",),
+                    "duration": ("FLOAT", {"default": 8, "step": 0.01, "tooltip": "Duration of the audio in seconds"}),
+                    "steps": ("INT", {"default": 25, "step": 1, "tooltip": "Number of steps to interpolate"}),
+                    "cfg": ("FLOAT", {"default": 4.5, "step": 0.1, "tooltip": "Strength of the conditioning"}),
+                    "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                    "prompt": ("STRING", {"default": "", "multiline": True} ),
+                    "negative_prompt": ("STRING", {"default": "", "multiline": True} ),
+                    "mask_away_clip": ("BOOLEAN", {"default": False, "tooltip": "If true, the clip video will be masked away"}),
+                    "force_offload": ("BOOLEAN", {"default": True, "tooltip": "If true, the model will be offloaded to the offload device"}),
+                },
+                "optional": {
+                    "images": ("IMAGE",),
+                },
+            }
+
+        RETURN_TYPES = ("AUDIO",)
+        RETURN_NAMES = ("audio", )
+        FUNCTION = "sample"
+        CATEGORY = "MMAudio"
+
+        def sample(self, mmaudio_model, seed, feature_utils, duration, steps, cfg, prompt, negative_prompt, mask_away_clip, force_offload, images=None):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["MMAudioSampler"]()
+            return original_loader.sample(mmaudio_model, seed, feature_utils, duration, steps, cfg, prompt, negative_prompt, mask_away_clip, force_offload, images)
+        
+    NODE_CLASS_MAPPINGS["MMAudioSamplerMultiGPU"] = override_class(MMAudioSampler)
+    logging.info(f"MultiGPU: Registered MMAudioSamplerMultiGPU")
+
+def register_UnetLoaderGGUFMultiGPU():
+    global NODE_CLASS_MAPPINGS
+
+    # First define the base UnetLoaderGGUF class
+    class UnetLoaderGGUF:
+        @classmethod
+        def INPUT_TYPES(s):
+            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
+            return {
+                "required": {
+                    "unet_name": (unet_names,),
+                }
+            }
+
+        RETURN_TYPES = ("MODEL",)
+        FUNCTION = "load_unet"
+        CATEGORY = "bootleg"
+        TITLE = "Unet Loader (GGUF)"
+
+        def load_unet(self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]()
+            return original_loader.load_unet(unet_name, dequant_dtype, patch_dtype, patch_on_device)
+
+    # Create the MultiGPU version of the base class
+    UnetLoaderGGUFMultiGPU = override_class(UnetLoaderGGUF)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFMultiGPU"] = UnetLoaderGGUFMultiGPU
+    logging.info(f"MultiGPU: Registered UnetLoaderGGUFMultiGPU")
+
+    # Now create the advanced version that inherits from the MultiGPU base class
+    class UnetLoaderGGUFAdvanced(UnetLoaderGGUF):
+        @classmethod
+        def INPUT_TYPES(s):
+            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
+            return {
+                "required": {
+                    "unet_name": (unet_names,),
+                    "dequant_dtype": (["default", "target", "float32", "float16", "bfloat16"], {"default": "default"}),
+                    "patch_dtype": (["default", "target", "float32", "float16", "bfloat16"], {"default": "default"}),
+                    "patch_on_device": ("BOOLEAN", {"default": False}),
+                }
+            }
+        TITLE = "Unet Loader (GGUF/Advanced)"
+
+    # Create the MultiGPU version of the advanced class
+    UnetLoaderGGUFAdvancedMultiGPU = override_class(UnetLoaderGGUFAdvanced)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedMultiGPU"] = UnetLoaderGGUFAdvancedMultiGPU
+    logging.info(f"MultiGPU: Registered UnetLoaderGGUFAdvancedMultiGPU")
+
+def register_CLIPLoaderGGUFMultiGPU():
+    global NODE_CLASS_MAPPINGS
+
+    class CLIPLoaderGGUF:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "clip_name": (s.get_filename_list(),),
+                    "type": (["stable_diffusion", "stable_cascade", "sd3", "stable_audio", "mochi", "ltxv"],),
+                }
+            }
+
+        RETURN_TYPES = ("CLIP",)
+        FUNCTION = "load_clip"
+        CATEGORY = "bootleg"
+        TITLE = "CLIPLoader (GGUF)"
+
+        @classmethod
+        def get_filename_list(s):
+            files = []
+            files += folder_paths.get_filename_list("clip")
+            files += folder_paths.get_filename_list("clip_gguf")
+            return sorted(files)
+
+        def load_data(self, ckpt_paths):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
+            return original_loader.load_data(ckpt_paths)
+
+        def load_patcher(self, clip_paths, clip_type, clip_data):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
+            return original_loader.load_patcher(clip_paths, clip_type, clip_data)
+
+        def load_clip(self, clip_name, type="stable_diffusion"):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
+            return original_loader.load_clip(clip_name, type)
+
+    # Create the MultiGPU version of the base class
+    CLIPLoaderGGUFMultiGPU = override_class(CLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFMultiGPU"] = CLIPLoaderGGUFMultiGPU
+    logging.info(f"MultiGPU: Registered CLIPLoaderGGUFMultiGPU")
+
+    # Now create the advanced version that inherits from the MultiGPU base class
+
+    class DualCLIPLoaderGGUF(CLIPLoaderGGUF):
+        @classmethod
+        def INPUT_TYPES(s):
+            file_options = (s.get_filename_list(), )
+            return {
+                "required": {
+                    "clip_name1": file_options,
+                    "clip_name2": file_options,
+                    "type": (("sdxl", "sd3", "flux", "hunyuan_video"),),
+                }
+            }
+
+        TITLE = "DualCLIPLoader (GGUF)"
+
+        def load_clip(self, clip_name1, clip_name2, type):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUF"]()
+            return original_loader.load_clip(clip_name1, clip_name2, type)
+    # Create the MultiGPU version of the advanced class
+    DualCLIPLoaderGGUFMultiGPU = override_class(DualCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFMultiGPU"] = DualCLIPLoaderGGUFMultiGPU
+    logging.info(f"MultiGPU: Registered DualCLIPLoaderGGUFMultiGPU")
+
+    class TripleCLIPLoaderGGUF(CLIPLoaderGGUF):
+        @classmethod
+        def INPUT_TYPES(s):
+            file_options = (s.get_filename_list(), )
+            return {
+                "required": {
+                    "clip_name1": file_options,
+                    "clip_name2": file_options,
+                    "clip_name3": file_options,
+                }
+            }
+
+        TITLE = "TripleCLIPLoader (GGUF)"
+
+        def load_clip(self, clip_name1, clip_name2, clip_name3, type="sd3"):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUF"]()
+            return original_loader.load_clip(clip_name1, clip_name2, clip_name3, type)
+    # Create the MultiGPU version of the advanced class
+    TripleCLIPLoaderGGUFMultiGPU = override_class(TripleCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFMultiGPU"] = TripleCLIPLoaderGGUFMultiGPU
+    logging.info(f"MultiGPU: Registered TripleCLIPLoaderGGUFMultiGPU")
+ 
+def register_PulidModelLoader():
+
+    global NODE_CLASS_MAPPINGS
+
+    class PulidModelLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {"required": { "pulid_file": (folder_paths.get_filename_list("pulid"), )}}
+
+        RETURN_TYPES = ("PULID",)
+        FUNCTION = "load_model"
+        CATEGORY = "pulid"
+
+        def load_model(self, pulid_file):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["PulidModelLoader"]()
+            return original_loader.load_model(pulid_file)
+        
+    NODE_CLASS_MAPPINGS["PulidModelLoaderMultiGPU"] = override_class(PulidModelLoader)
+    logging.info(f"MultiGPU: Registered PulidModelLoaderMultiGPU")
+
+def register_PulidInsightFaceLoader():
+
+    global NODE_CLASS_MAPPINGS
+
+    class PulidInsightFaceLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "provider": (["CPU", "CUDA", "ROCM", "CoreML"], ),
+                },
+            }
+
+        RETURN_TYPES = ("FACEANALYSIS",)
+        FUNCTION = "load_insightface"
+        CATEGORY = "pulid"
+
+        def load_insightface(self, provider):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["PulidInsightFaceLoader"]()
+            return original_loader.load_insightface(provider)
+        
+    NODE_CLASS_MAPPINGS["PulidInsightFaceLoaderMultiGPU"] = override_class(PulidInsightFaceLoader)
+    logging.info(f"MultiGPU: Registered PulidInsightFaceLoaderMultiGPU")
+
+def register_PulidEvaClipLoader():
+
+    global NODE_CLASS_MAPPINGS
+
+    class PulidEvaClipLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {},
+            }
+
+        RETURN_TYPES = ("EVA_CLIP",)
+        FUNCTION = "load_eva_clip"
+        CATEGORY = "pulid"
+
+        def load_eva_clip(self):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["PulidEvaClipLoader"]()
+            return original_loader.load_eva_clip()
+        
+    NODE_CLASS_MAPPINGS["PulidEvaClipLoaderMultiGPU"] = override_class(PulidEvaClipLoader)
+    logging.info(f"MultiGPU: Registered PulidEvaClipLoaderMultiGPU")
+
+def check_module_exists(module_path):
+    full_path = os.path.join("custom_nodes", module_path)
+    logging.info(f"MultiGPU: Checking for module at {full_path}")
+    
+    if not os.path.exists(full_path):
+        logging.info(f"MultiGPU: Module {module_path} not found - skipping")
+        return False
+        
+    logging.info(f"MultiGPU: Found {module_path}, creating compatible MultiGPU nodes")
+    return True
 
 # Register desired nodes
 register_module("",                         ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
-register_module("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
-#register_module("x-flux-comfyui",           ["LoadFluxControlNet"])
-#register_Florence2module("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
-register_LTXmodule("ComfyUI-LTXVideo", ["LTXVLoader"])
-#register_module("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
-#register_module("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
 
+if check_module_exists("ComfyUI-LTXVideo"):
+    register_LTXVLoaderMultiGPU()
+if check_module_exists("ComfyUI-Florence2"):
+    register_Florence2ModelLoaderMultiGPU()
+    register_DownloadAndLoadFlorence2ModelMultiGPU()
+if check_module_exists("ComfyUI_bitsandbytes_NF4"):
+    register_CheckpointLoaderNF4()
+if check_module_exists("x-flux-comfyui"):
+    register_LoadFluxControlNetMultiGPU()
+if check_module_exists("ComfyUI-MMAudio"):
+    register_MMAudioModelLoaderMultiGPU()
+    register_MMAudioFeatureUtilsLoaderMultiGPU()
+    register_MMAudioSamplerMultiGPU()
+if check_module_exists("ComfyUI-GGUF"):
+    register_UnetLoaderGGUFMultiGPU()
+    register_CLIPLoaderGGUFMultiGPU()
+if check_module_exists("PuLID_ComfyUI"):
+    register_PulidModelLoader()
+    register_PulidInsightFaceLoader()
+    register_PulidEvaClipLoader()
 
-register_module_new("ComfyUI-GGUF",             ["UnetLoaderGGUF","UnetLoaderGGUFAdvanced","CLIPLoaderGGUF","DualCLIPLoaderGGUF","TripleCLIPLoaderGGUF"])
-#register_module_new("x-flux-comfyui",           ["LoadFluxControlNet"])
-#register_module_new("ComfyUI-Florence2", ["Florence2ModelLoader", "DownloadAndLoadFlorence2Model"])
-register_module_new("ComfyUI-LTXVideo", ["LTXVLoader"])
-#register_module("", ["LTXVLoader"])
-#register_module_new("ComfyUI-MMAudio",          ["MMAudioFeatureUtilsLoader","MMAudioModelLoader","MMAudioSampler"])
-#register_module_new("ComfyUI_bitsandbytes_NF4", ["CheckpointLoaderNF4",])
 
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
