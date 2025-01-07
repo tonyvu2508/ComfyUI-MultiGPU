@@ -47,6 +47,16 @@ def override_class(cls):
 
 NODE_CLASS_MAPPINGS = {}
 
+def check_module_exists(module_path):
+    full_path = os.path.join("custom_nodes", module_path)
+    logging.info(f"MultiGPU: Checking for module at {full_path}")
+    
+    if not os.path.exists(full_path):
+        logging.info(f"MultiGPU: Module {module_path} not found - skipping")
+        return False
+        
+    logging.info(f"MultiGPU: Found {module_path}, creating compatible MultiGPU nodes")
+    return True
 
 def register_module(module_path, target_nodes):
     try:
@@ -579,16 +589,116 @@ def register_PulidEvaClipLoader():
     NODE_CLASS_MAPPINGS["PulidEvaClipLoaderMultiGPU"] = override_class(PulidEvaClipLoader)
     logging.info(f"MultiGPU: Registered PulidEvaClipLoaderMultiGPU")
 
-def check_module_exists(module_path):
-    full_path = os.path.join("custom_nodes", module_path)
-    logging.info(f"MultiGPU: Checking for module at {full_path}")
-    
-    if not os.path.exists(full_path):
-        logging.info(f"MultiGPU: Module {module_path} not found - skipping")
-        return False
+def register_HyVideoModelLoader():
+
+    global NODE_CLASS_MAPPINGS
+
+    class HyVideoModelLoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "model": (folder_paths.get_filename_list("diffusion_models"), {"tooltip": "These models are loaded from the 'ComfyUI/models/diffusion_models' -folder",}),
+
+                "base_precision": (["fp32", "bf16"], {"default": "bf16"}),
+                "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'fp8_scaled', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6", "torchao_int4", "torchao_int8"], {"default": 'disabled', "tooltip": "optional quantization method"}),
+                "load_device": (["main_device"], {"default": "main_device"}),
+                },
+                "optional": {
+                    "attention_mode": ([
+                        "sdpa",
+                        "flash_attn_varlen",
+                        "sageattn_varlen",
+                        "comfy",
+                        ], {"default": "flash_attn"}),
+                    "compile_args": ("COMPILEARGS", ),
+                    "block_swap_args": ("BLOCKSWAPARGS", ),
+                    "lora": ("HYVIDLORA", {"default": None}),
+                    "auto_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "Enable auto offloading for reduced VRAM usage, implementation from DiffSynth-Studio, slightly different from block swapping and uses even less VRAM, but can be slower as you can't define how much VRAM to use"}),
+                }
+            }
+
+        RETURN_TYPES = ("HYVIDEOMODEL",)
+        RETURN_NAMES = ("model", )
+        FUNCTION = "loadmodel"
+        CATEGORY = "HunyuanVideoWrapper"
+
+        def loadmodel(self, model, base_precision, load_device,  quantization, compile_args=None, attention_mode="sdpa", block_swap_args=None, lora=None, auto_cpu_offload=False):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["HyVideoModelLoader"]()
+            return original_loader.loadmodel(model, base_precision, load_device, quantization, compile_args, attention_mode, block_swap_args, lora, auto_cpu_offload)
         
-    logging.info(f"MultiGPU: Found {module_path}, creating compatible MultiGPU nodes")
-    return True
+    NODE_CLASS_MAPPINGS["HyVideoModelLoaderMultiGPU"] = override_class(HyVideoModelLoader)
+    logging.info(f"MultiGPU: Registered HyVideoModelLoaderMultiGPU")
+
+def register_HyVideoVAELoader():
+
+    global NODE_CLASS_MAPPINGS
+
+    class HyVideoVAELoader:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "model_name": (folder_paths.get_filename_list("vae"), {"tooltip": "These models are loaded from 'ComfyUI/models/vae'"}),
+                },
+                "optional": {
+                    "precision": (["fp16", "fp32", "bf16"],
+                        {"default": "bf16"}
+                    ),
+                    "compile_args":("COMPILEARGS", ),
+                }
+            }
+
+        RETURN_TYPES = ("VAE",)
+        RETURN_NAMES = ("vae", )
+        FUNCTION = "loadmodel"
+        CATEGORY = "HunyuanVideoWrapper"
+        DESCRIPTION = "Loads Hunyuan VAE model from 'ComfyUI/models/vae'"
+
+        def loadmodel(self, model_name, precision, compile_args=None):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["HyVideoVAELoader"]()
+            return original_loader.loadmodel(model_name, precision, compile_args)
+        
+    NODE_CLASS_MAPPINGS["HyVideoVAELoaderMultiGPU"] = override_class(HyVideoVAELoader)
+    logging.info(f"MultiGPU: Registered HyVideoVAELoaderMultiGPU")
+
+def register_DownloadAndLoadHyVideoTextEncoder():
+
+    global NODE_CLASS_MAPPINGS
+
+    class DownloadAndLoadHyVideoTextEncoder:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "llm_model": (["Kijai/llava-llama-3-8b-text-encoder-tokenizer","xtuner/llava-llama-3-8b-v1_1-transformers"],),
+                    "clip_model": (["disabled","openai/clip-vit-large-patch14",],),
+                    "precision": (["fp16", "fp32", "bf16"],
+                        {"default": "bf16"}
+                    ),
+                },
+                "optional": {
+                    "apply_final_norm": ("BOOLEAN", {"default": False}),
+                    "hidden_state_skip_layer": ("INT", {"default": 2}),
+                    "quantization": (['disabled', 'bnb_nf4', "fp8_e4m3fn"], {"default": 'disabled'}),
+                }
+            }
+
+        RETURN_TYPES = ("HYVIDTEXTENCODER",)
+        RETURN_NAMES = ("hyvid_text_encoder", )
+        FUNCTION = "loadmodel"
+        CATEGORY = "HunyuanVideoWrapper"
+        DESCRIPTION = "Loads Hunyuan text_encoder model from 'ComfyUI/models/LLM'"
+
+        def loadmodel(self, llm_model, clip_model, precision,  apply_final_norm=False, hidden_state_skip_layer=2, quantization="disabled"):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["DownloadAndLoadHyVideoTextEncoder"]()
+            return original_loader.loadmodel(llm_model, clip_model, precision, apply_final_norm, hidden_state_skip_layer, quantization)
+        
+    NODE_CLASS_MAPPINGS["DownloadAndLoadHyVideoTextEncoderMultiGPU"] = override_class(DownloadAndLoadHyVideoTextEncoder)
+    logging.info(f"MultiGPU: Registered DownloadAndLoadHyVideoTextEncoderMultiGPU")
 
 # Register desired nodes
 register_module("",                         ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
@@ -613,7 +723,9 @@ if check_module_exists("PuLID_ComfyUI"):
     register_PulidModelLoader()
     register_PulidInsightFaceLoader()
     register_PulidEvaClipLoader()
-
-
+if check_module_exists("ComfyUI-HunyuanVideoWrapper"):
+    register_HyVideoModelLoader()
+    register_HyVideoVAELoader()
+    register_DownloadAndLoadHyVideoTextEncoder()
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
