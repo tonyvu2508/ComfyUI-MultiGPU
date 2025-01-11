@@ -25,27 +25,54 @@ def get_torch_device_patched():
 
 comfy.model_management.get_torch_device = get_torch_device_patched
 
+def get_device_list():
+    import torch
+    return ["cpu"] + [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+
+class DeviceSelectorMultiGPU:
+    @classmethod
+    def INPUT_TYPES(s):
+        devices = get_device_list()
+        return {
+            "required": {
+                "device": (devices, {"default": devices[1] if len(devices) > 1 else devices[0]})
+            }
+        }
+
+    RETURN_TYPES = (get_device_list(),)
+    RETURN_NAMES = ("device",)
+    FUNCTION = "select_device"
+    CATEGORY = "multigpu"
+
+    def select_device(self, device):
+        return (device,)
+
 def override_class(cls):
     class NodeOverride(cls):
         @classmethod
         def INPUT_TYPES(s):
             inputs = copy.deepcopy(cls.INPUT_TYPES())
-            devices = ["cpu"] + [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-            inputs["required"]["device"] = (devices,)
+            devices = get_device_list()
+            default_device = devices[1] if len(devices) > 1 else devices[0]
+            inputs["optional"] = inputs.get("optional", {})
+            inputs["optional"]["device"] = (devices, {"default": default_device})
             return inputs
 
         CATEGORY = "multigpu"
         FUNCTION = "override"
 
-        def override(self, *args, device, **kwargs):
+        def override(self, *args, device=None, **kwargs):
             global current_device
-            current_device = device
+            if device is not None:
+                current_device = device
             fn = getattr(super(), cls.FUNCTION)
             return fn(*args, **kwargs)
 
     return NodeOverride
 
-NODE_CLASS_MAPPINGS = {}
+NODE_CLASS_MAPPINGS = {
+    "DeviceSelectorMultiGPU": DeviceSelectorMultiGPU
+}
 
 def check_module_exists(module_path):
     full_path = os.path.join("custom_nodes", module_path)
