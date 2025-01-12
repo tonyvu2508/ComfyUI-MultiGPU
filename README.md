@@ -1,6 +1,6 @@
 # ComfyUI-MultiGPU
 
-## Experimental nodes for using multiple GPUs as well as offloading model components to the CPU in a single ComfyUI workflow
+## Advanced user nodes for using multiple GPUs as well as offloading model components to the CPU in a single ComfyUI workflow
 
 This extension adds device selection capabilities to model loading nodes in ComfyUI. It monkey patches the memory management of ComfyUI in a hacky way and is neither a comprehensive solution is nor is it well-tested on any edge-case CUDA/CPU solutions. **Use at your own risk.**
 
@@ -19,7 +19,6 @@ Clone [this repository](https://github.com/pollockjj/ComfyUI-MultiGPU) inside `C
 The extension automatically creates MultiGPU versions of loader nodes. Each MultiGPU node has the same functionality as its original counterpart but adds a `device` parameter that allows you to specify the GPU to use.
 
 Currently supported nodes (automatically detected if available):
-
 - Standard [ComfyUI](https://github.com/comfyanonymous/ComfyUI) model loaders:
   - CheckpointLoaderSimpleMultiGPU
   - CLIPLoaderMultiGPU
@@ -43,12 +42,26 @@ Currently supported nodes (automatically detected if available):
   - LTXVLoaderMultiGPU
 - NF4 Checkpoint Format Loader(requires [ComfyUI_bitsandbytes_NF4](https://github.com/comfyanonymous/ComfyUI_bitsandbytes_NF4)):
   - CheckpointLoaderNF4MultiGPU
+- HunyuanVideoWrapper (requires [ComfyUI-HunyuanVideoWrapper](https://github.com/kijai/ComfyUI-HunyuanVideoWrapper)):
+  - HyVideoModelLoaderMultiGPU
+  - HyVideoVAELoaderMultiGPU
+  - DownloadAndLoadHyVideoTextEncoderMultiGPU
+ - Native to ComfyUI-MultiGPU
+   - DeviceSelectorMultiGPU (Allows user to link loaders together to use the same selected device)
 
 All MultiGPU nodes available for your install can be found in the "multigpu" category in the node menu.
 
 ## Example workflows
 
-All workflows have been tested on a 2x 3090 setup.
+All workflows have been tested on a 2x 3090 linux setup, a 4070 win 11 setup, and a 3090/1070ti linux setup.
+
+### Split Hunyuan Video generation across multiple resources
+
+- [examples/hunyuanvideowrapper_native_vae.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/hunyuanvideowrapper_native_vae.json)
+This workflow uses two of the custom_node's loaders - putting the main video model on cuda0 and the CLIP onto the CPU. This workflow uses Comfy's native VAE loader to load the VAE onto a second cuda device, keeping model, VAE, and CLIP in their operating memory space at all times. This allows the benefit of kijai's proecessing node with the flexibility of a MultiGPU setup.
+
+- [examples/hunyuanvideowrapper_select_device.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/hunyuanvideowrapper_select_device.json)
+This workflow loads the main video model and VAE onto the cuda device and the CLIP onto the cpu. The model and VAE are linked in this example due to kijai's own extensive memory management assuming model and VAE are on the same device.
 
 ### Split FLUX.1-dev across two GPUs
 
@@ -95,6 +108,11 @@ This workflow creates an img2txt2img2vid video generation pipeline by:
  3. Loading the LTX Video UNet and VAE on GPU 2, and LTX-encoded CLIP on the CPU, and taking the resulting FLUX.1 image and provide it as the starting image for an LTX Video image-to-video generation
  4. Generate a 5 second video based on the provided image
 All models are distributed across available the available CPU and GPUs with no model reloading on dual 3090s. Requires [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) and [ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo)
+
+### Using DeviceSelectorMultiGPU
+
+- [examples/device_selector_lowvram_flux_controlnet.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/device_selector_lowvram_flux_controlnet.json)
+This workflow loads a GGUF version of FLUX.1-dev onto a cuda device and the T5 CLIP onto the CPU. The FLUX.1-dev fill controlnet model by alimama-creative [FLUX.1-dev-Controlnet-Inpainting-Alpha controlnet model](https://huggingface.co/alimama-creative/FLUX.1-dev-Controlnet-Inpainting-Alpha/tree/main) illustrating linking two loaders together so their resources always remain in-sync.
 
 #### LLM-Guided Video Generation
 
