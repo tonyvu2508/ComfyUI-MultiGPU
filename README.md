@@ -19,6 +19,7 @@ Clone [this repository](https://github.com/pollockjj/ComfyUI-MultiGPU) inside `C
 The extension automatically creates MultiGPU versions of loader nodes. Each MultiGPU node has the same functionality as its original counterpart but adds a `device` parameter that allows you to specify the GPU to use.
 
 Currently supported nodes (automatically detected if available):
+
 - Standard [ComfyUI](https://github.com/comfyanonymous/ComfyUI) model loaders:
   - CheckpointLoaderSimpleMultiGPU
   - CLIPLoaderMultiGPU
@@ -44,16 +45,22 @@ Currently supported nodes (automatically detected if available):
   - CheckpointLoaderNF4MultiGPU
 - HunyuanVideoWrapper (requires [ComfyUI-HunyuanVideoWrapper](https://github.com/kijai/ComfyUI-HunyuanVideoWrapper)):
   - HyVideoModelLoaderMultiGPU
+  - HyVideoModelLoaderDiffSynthMultiGPU (**NEW** - MultiGPU-specific node for offloading to an `offload_device` using MultiGPU's device selectors)
   - HyVideoVAELoaderMultiGPU
   - DownloadAndLoadHyVideoTextEncoderMultiGPU
- - Native to ComfyUI-MultiGPU
-   - DeviceSelectorMultiGPU (Allows user to link loaders together to use the same selected device)
+- Native to ComfyUI-MultiGPU
+  - DeviceSelectorMultiGPU (Allows user to link loaders together to use the same selected device)
 
 All MultiGPU nodes available for your install can be found in the "multigpu" category in the node menu.
 
 ## Example workflows
 
 All workflows have been tested on a 2x 3090 linux setup, a 4070 win 11 setup, and a 3090/1070ti linux setup.
+
+### Split Hunyuan Video UNet across two devices and use DiffSynth Just-in-Time loading
+
+- [examples/hunyuanvideowrapper_diffsynth.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/hunyuanvideowrapper_diffsynth.json)
+This workflow demonstrates DiffSynth's memory optimization strategy enabled in kijai's `ComfyUI-HunyuanVideoWrapper` UNet loader, splitting the UNet model across two CUDA devices using block-swapping. The main device handles active computations while blocks are swapped to and from the offload device as needed. As written, the CLIP loads on cuda:0 and then offloads, and the VAE is loaded after the UNet model has been cleared from memory after generation. This approach enables processing of higher resolution or longer duration videos that would exceed a single GPU's memory capacity, though at the cost of additional processing time. Note that an initial OOM error is expected as the workflow calibrates its memory management strategy - simply run the generation again with the same parameters.
 
 ### Split Hunyuan Video generation across multiple resources
 
