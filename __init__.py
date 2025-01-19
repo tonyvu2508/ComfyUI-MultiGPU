@@ -77,6 +77,88 @@ def analyze_ggml_loading(model):
         "cuda:1": 8   # 8/9 of layers
     }
 
+    logging.info(f"MultiGPU: Input distorch_allocations: {distorch_allocations}")
+
+    DEVICE_RATIOS_DISTORCH = {}
+
+    # We will store extra info here so we can log a full table of devices,
+    # including fraction%, total memory (GB), and allocated memory (GB).
+    device_table = {}
+
+    # 1) Primary compute device:
+    primary_dev = current_device
+    primary_dev_name = (
+        f"{primary_dev.type}:{primary_dev.index}" if primary_dev.type != "cpu" else "cpu"
+    )
+    primary_total_mem_bytes = comfy.model_management.get_total_memory(torch.device(primary_dev_name))
+    primary_fraction = distorch_allocations.get("compute_device_alloc", 0.0)
+    primary_alloc_bytes = primary_total_mem_bytes * primary_fraction
+
+    DEVICE_RATIOS_DISTORCH[primary_dev_name] = primary_alloc_bytes
+    device_table[primary_dev_name] = {
+        "fraction": primary_fraction,
+        "total_bytes": primary_total_mem_bytes,
+        "alloc_bytes": primary_alloc_bytes,
+    }
+
+    # 2) Optional DistOrch devices (distorch1, distorch2, ...):
+    i = 1
+    while f"distorch{i}_device" in distorch_allocations:
+        dev_key = f"distorch{i}_device"
+        alloc_key = f"distorch{i}_alloc"
+
+        dev_name = distorch_allocations[dev_key]
+        dev_total_mem_bytes = comfy.model_management.get_total_memory(torch.device(dev_name))
+        dev_fraction = distorch_allocations.get(alloc_key, 0.0)
+        dev_alloc_bytes = dev_total_mem_bytes * dev_fraction
+
+        DEVICE_RATIOS_DISTORCH[dev_name] = dev_alloc_bytes
+        device_table[dev_name] = {
+            "fraction": dev_fraction,
+            "total_bytes": dev_total_mem_bytes,
+            "alloc_bytes": dev_alloc_bytes,
+        }
+        i += 1
+
+    # 3) Always include CPU:
+    cpu_dev_name = distorch_allocations.get("distorch_cpu", "cpu")
+    cpu_total_mem_bytes = comfy.model_management.get_total_memory(torch.device(cpu_dev_name))
+    cpu_fraction = distorch_allocations.get("distorch_cpu_alloc", 0.0)
+    cpu_alloc_bytes = cpu_total_mem_bytes * cpu_fraction
+
+    DEVICE_RATIOS_DISTORCH[cpu_dev_name] = cpu_alloc_bytes
+    device_table[cpu_dev_name] = {
+        "fraction": cpu_fraction,
+        "total_bytes": cpu_total_mem_bytes,
+        "alloc_bytes": cpu_alloc_bytes,
+    }
+
+    # 4) Log the final constructed DEVICE_RATIOS_DISTORCH in raw bytes:
+    logging.info(f"MultiGPU: Raw DEVICE_RATIOS_DISTORCH in bytes: {DEVICE_RATIOS_DISTORCH}")
+
+    # 5) Print a table with device, fraction%, total mem (GB), allocated (GB)
+    logging.info("\nDisTorch Device Analysis:")
+    logging.info("========================================")
+    fmt_str = "{:<10} {:>10} {:>12} {:>12}"
+    logging.info(fmt_str.format("Device", "Alloc %", "Total (GB)", "Alloc (GB)"))
+    logging.info("-" * 46)
+
+    for dev in sorted(device_table.keys()):
+        frac = device_table[dev]["fraction"]
+        total_gb = device_table[dev]["total_bytes"] / (1024**3)
+        alloc_gb = device_table[dev]["alloc_bytes"] / (1024**3)
+
+        logging.info(fmt_str.format(
+            dev,
+            f"{frac * 100:.2f}%",    # fraction as a percentage
+            f"{total_gb:.2f}",      # total memory in GB
+            f"{alloc_gb:.2f}"       # allocated memory in GB
+        ))
+
+    logging.info("========================================\n")
+
+
+
     # Step 1: Memory Analysis
     device_properties = {}
     for device in DEVICE_RATIOS.keys():
