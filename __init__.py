@@ -39,7 +39,10 @@ def analyze_ggml_loading(model):
     DEVICE_RATIOS_DISTORCH = {}
     device_table = {}
 
-    primary_dev_name = f"{current_device.type}:{current_device.index}" if current_device.type != "cpu" else "cpu"
+
+
+
+    primary_dev_name = distorch_allocations.get("compute_device")
     primary_total_mem_bytes = comfy.model_management.get_total_memory(torch.device(primary_dev_name))
     primary_fraction = distorch_allocations.get("compute_device_alloc", 0.0)
     primary_alloc_gb = (primary_total_mem_bytes * primary_fraction) / (1024**3)
@@ -260,15 +263,19 @@ def override_class_with_distorch(cls):
         CATEGORY = "multigpu"
         FUNCTION = "override"
 
-        def override(self, *args, compute_device=None, **kwargs):
+        def override(self, *args, **kwargs):
             global current_device
             global distorch_allocations
-
-            current_device = compute_device
+            global distorch_compute_device
             distorch_allocations = {}
+            distorch_compute_device = kwargs.get("compute_device", None)
+            if distorch_compute_device is not None:
+                current_device = distorch_compute_device
 
             for key, value in list(kwargs.items()):
                 if key not in {"unet_name"}:
+                    logging.info(f"MultiGPU: Removing {key} from kwargs")
+                    logging.info(f"MultiGPU: Value: {value}")
                     distorch_allocations[key] = kwargs.pop(key)
 
             fn = getattr(super(), cls.FUNCTION)
@@ -357,6 +364,7 @@ def register_UnetLoaderGGUFMultiGPU():
 
 def register_UnetLoaderGGUFDisTorchMultiGPU():
     global NODE_CLASS_MAPPINGS
+    global distorch_compute_device
 
     # First define the base UnetLoaderGGUFDisTorch class
     class UnetLoaderGGUFDisTorch:
@@ -393,8 +401,8 @@ def register_UnetLoaderGGUFDisTorchMultiGPU():
 
                     try:
                         # Temporarily override the device logic for this load
-                        current_device = torch.device("cuda:0")
-                        current_offload_device = torch.device("cuda:1")
+                        current_device = distorch_compute_device
+                        current_offload_device = distorch_compute_device
 
                         logging.info(f"MultiGPU: GGUFDisTorch - Overriding current_device to {current_device}")
                         logging.info(f"MultiGPU: GGUFDisTorch - Overriding current_offload_device to {current_offload_device}")
@@ -417,15 +425,18 @@ def register_UnetLoaderGGUFDisTorchMultiGPU():
                                     module_count += 1
                                     if hasattr(m, "weight"):
                                         device = getattr(m.weight, "device", None)
-                                        # logging.info(f"MultiGPU: GGUFDisTorch - Module {n} on device {device}, offload_device is {self.offload_device}")
-                                        if device == self.offload_device:
+                                        # logging.info(f"MultiGPU: GGUFDisTorch - Weight Module {n} on device {device}, offload_device is {self.offload_device}")
+                                        if device is not None:
                                             linked.append((n, m))
-                                logging.info(f"MultiGPU: GGUFDisTorch - Scanned {module_count} total modules")
-                            else:
-                                logging.info("MultiGPU: GGUFDisTorch - Skipped module scanning due to lowvram check")
-                            
+                                            continue
+                                    if hasattr(m, "bias"):
+                                        device = getattr(m.bias, "device", None)
+                                        # logging.info(f"MultiGPU: GGUFDisTorch - Bias Module {n} on device {device}, offload_device is {self.offload_device}")
+                                        if device is not None:
+                                            linked.append((n, m))
+                                            continue
                             if linked:
-                                logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules")
+                                logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules, computing reallocation")
                                 device_assignments = analyze_ggml_loading(self.model)['device_assignments']
                                 for device, layers in device_assignments.items():
                                     target_device = torch.device(device)
@@ -433,7 +444,7 @@ def register_UnetLoaderGGUFDisTorchMultiGPU():
                                     for n, m, _ in layers:
                                         try:
                                             m.to(self.load_device).to(target_device)
-                                         #   logging.info(f"MultiGPU: GGUFDisTorch - Successfully moved layer {n} to {device}")
+                                            # logging.info(f"MultiGPU: GGUFDisTorch - Successfully moved layer {n} to {device}")
                                         except Exception as e:
                                             logging.error(f"MultiGPU: GGUFDisTorch - Error moving layer {n} to {device}: {str(e)}")
                                 self.mmap_released = True
