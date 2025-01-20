@@ -4,283 +4,170 @@ import torch
 import sys
 import comfy.model_management
 import os
-from pathlib import Path  # Add this import
+from pathlib import Path
 import importlib.util
 import logging
 import folder_paths
+from collections import defaultdict
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logging.info("MultiGPU: Initialization started")
 
-# Initialize the current device states and log them
 current_device = comfy.model_management.get_torch_device()
 current_offload_device = comfy.model_management.get_torch_device()
 distorch_allocations = {}
 
-logging.info(f"MultiGPU: Initial device set to {current_device}")
-logging.info(f"MultiGPU: Initial offload device set to {current_offload_device}")
-
-# Define and patch the device logic
 def get_torch_device_patched():
     device = None
-    if (
-        not torch.cuda.is_available()
-        or comfy.model_management.cpu_state == comfy.model_management.CPUState.CPU
-        or "cpu" in str(current_device).lower()
-    ):
+    if (not torch.cuda.is_available() or comfy.model_management.cpu_state == comfy.model_management.CPUState.CPU or "cpu" in str(current_device).lower()):
         device = torch.device("cpu")
     else:
         device = torch.device(current_device)
-
-    logging.info(f"MultiGPU: get_torch_device_patched invoked, returning {device}")
     return device
-
-comfy.model_management.get_torch_device = get_torch_device_patched
-logging.info(f"MultiGPU: Patched get_torch_device now returns {get_torch_device_patched()}")
 
 def unet_offload_device_patched():
     device = None
-    if (
-        not torch.cuda.is_available()
-        or comfy.model_management.cpu_state == comfy.model_management.CPUState.CPU
-        or "cpu" in str(current_offload_device).lower()
-    ):
+    if (not torch.cuda.is_available() or comfy.model_management.cpu_state == comfy.model_management.CPUState.CPU or "cpu" in str(current_offload_device).lower()):
         device = torch.device("cpu")
     else:
         device = torch.device(current_offload_device)
-
-    logging.info(f"MultiGPU: unet_offload_device_patched invoked, returning {device}")
     return device
 
+comfy.model_management.get_torch_device = get_torch_device_patched
 comfy.model_management.unet_offload_device = unet_offload_device_patched
-logging.info(f"MultiGPU: Patched unet_offload_device now returns {unet_offload_device_patched()}")
-
-# Save the original patched logic for later restoration and log them
-original_get_torch_device = comfy.model_management.get_torch_device
-original_unet_offload_device = comfy.model_management.unet_offload_device
-logging.info(f"MultiGPU: Saved original get_torch_device: {original_get_torch_device()}")
-logging.info(f"MultiGPU: Saved original unet_offload_device: {original_unet_offload_device()}")
-
-logging.info("MultiGPU: Device management logic initialized")
-
 
 def analyze_ggml_loading(model):
-    """
-    Analyzes GGML model loading and determines device assignments.
-    Returns device assignments with accurate memory calculations.
-    """
-    from collections import defaultdict
-
-    # For testing - this would come from a global config in production
-    DEVICE_RATIOS = {
-        "cuda:0": 1,  # 1/9 of layers
-        "cuda:1": 8   # 8/9 of layers
-    }
-
-    logging.info(f"MultiGPU: Input distorch_allocations: {distorch_allocations}")
 
     DEVICE_RATIOS_DISTORCH = {}
-
-    # We will store extra info here so we can log a full table of devices,
-    # including fraction%, total memory (GB), and allocated memory (GB).
     device_table = {}
 
-    # 1) Primary compute device:
-    primary_dev = current_device
-    primary_dev_name = (
-        f"{primary_dev.type}:{primary_dev.index}" if primary_dev.type != "cpu" else "cpu"
-    )
+    primary_dev_name = f"{current_device.type}:{current_device.index}" if current_device.type != "cpu" else "cpu"
     primary_total_mem_bytes = comfy.model_management.get_total_memory(torch.device(primary_dev_name))
     primary_fraction = distorch_allocations.get("compute_device_alloc", 0.0)
-    primary_alloc_bytes = primary_total_mem_bytes * primary_fraction
+    primary_alloc_gb = (primary_total_mem_bytes * primary_fraction) / (1024**3)
+    DEVICE_RATIOS_DISTORCH[primary_dev_name] = primary_alloc_gb
+    device_table[primary_dev_name] = {"fraction": primary_fraction,"total_gb": primary_total_mem_bytes / (1024**3),"alloc_gb": primary_alloc_gb}
 
-    DEVICE_RATIOS_DISTORCH[primary_dev_name] = primary_alloc_bytes
-    device_table[primary_dev_name] = {
-        "fraction": primary_fraction,
-        "total_bytes": primary_total_mem_bytes,
-        "alloc_bytes": primary_alloc_bytes,
-    }
-
-    # 2) Optional DistOrch devices (distorch1, distorch2, ...):
     i = 1
     while f"distorch{i}_device" in distorch_allocations:
         dev_key = f"distorch{i}_device"
         alloc_key = f"distorch{i}_alloc"
-
         dev_name = distorch_allocations[dev_key]
         dev_total_mem_bytes = comfy.model_management.get_total_memory(torch.device(dev_name))
         dev_fraction = distorch_allocations.get(alloc_key, 0.0)
-        dev_alloc_bytes = dev_total_mem_bytes * dev_fraction
-
-        DEVICE_RATIOS_DISTORCH[dev_name] = dev_alloc_bytes
-        device_table[dev_name] = {
-            "fraction": dev_fraction,
-            "total_bytes": dev_total_mem_bytes,
-            "alloc_bytes": dev_alloc_bytes,
-        }
+        dev_alloc_gb = (dev_total_mem_bytes * dev_fraction) / (1024**3)
+        DEVICE_RATIOS_DISTORCH[dev_name] = dev_alloc_gb
+        device_table[dev_name] = {"fraction": dev_fraction,"total_gb": dev_total_mem_bytes / (1024**3),"alloc_gb": dev_alloc_gb}
         i += 1
 
-    # 3) Always include CPU:
     cpu_dev_name = distorch_allocations.get("distorch_cpu", "cpu")
     cpu_total_mem_bytes = comfy.model_management.get_total_memory(torch.device(cpu_dev_name))
     cpu_fraction = distorch_allocations.get("distorch_cpu_alloc", 0.0)
-    cpu_alloc_bytes = cpu_total_mem_bytes * cpu_fraction
+    cpu_alloc_gb = (cpu_total_mem_bytes * cpu_fraction) / (1024**3)
+    DEVICE_RATIOS_DISTORCH[cpu_dev_name] = cpu_alloc_gb
+    device_table[cpu_dev_name] = {"fraction": cpu_fraction,"total_gb": cpu_total_mem_bytes / (1024**3),"alloc_gb": cpu_alloc_gb}
 
-    DEVICE_RATIOS_DISTORCH[cpu_dev_name] = cpu_alloc_bytes
-    device_table[cpu_dev_name] = {
-        "fraction": cpu_fraction,
-        "total_bytes": cpu_total_mem_bytes,
-        "alloc_bytes": cpu_alloc_bytes,
-    }
+    eq_line = "=" * 47
+    dash_line = "-" * 47
+    fmt_alloc = "{:<12}{:>10}{:>14}{:>10}"
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.info(eq_line)
+    logging.info("               DisTorch Analysis")
+    logging.info(eq_line)
+    logging.info(dash_line)
+    logging.info("          DisTorch Device Allocations")
+    logging.info(dash_line)
+    logging.info(fmt_alloc.format("Device", "Alloc %", "Total (GB)", " Alloc (GB)"))
+    logging.info(dash_line)
 
-    # 4) Log the final constructed DEVICE_RATIOS_DISTORCH in raw bytes:
-    logging.info(f"MultiGPU: Raw DEVICE_RATIOS_DISTORCH in bytes: {DEVICE_RATIOS_DISTORCH}")
+    sorted_devices = sorted(device_table.keys(), key=lambda d: (d == "cpu", d))
 
-    # 5) Print a table with device, fraction%, total mem (GB), allocated (GB)
-    logging.info("\nDisTorch Device Analysis:")
-    logging.info("========================================")
-    fmt_str = "{:<10} {:>10} {:>12} {:>12}"
-    logging.info(fmt_str.format("Device", "Alloc %", "Total (GB)", "Alloc (GB)"))
-    logging.info("-" * 46)
-
-    for dev in sorted(device_table.keys()):
+    for dev in sorted_devices:
         frac = device_table[dev]["fraction"]
-        total_gb = device_table[dev]["total_bytes"] / (1024**3)
-        alloc_gb = device_table[dev]["alloc_bytes"] / (1024**3)
+        tot_gb = device_table[dev]["total_gb"]
+        alloc_gb = device_table[dev]["alloc_gb"]
+        logging.info(fmt_alloc.format(dev,f"{int(frac * 100)}%",f"{tot_gb:.2f}",f"{alloc_gb:.2f}"))
 
-        logging.info(fmt_str.format(
-            dev,
-            f"{frac * 100:.2f}%",    # fraction as a percentage
-            f"{total_gb:.2f}",      # total memory in GB
-            f"{alloc_gb:.2f}"       # allocated memory in GB
-        ))
+    logging.info(dash_line)
 
-    logging.info("========================================\n")
-
-
-
-    # Step 1: Memory Analysis
-    device_properties = {}
-    for device in DEVICE_RATIOS.keys():
-        if device.startswith("cuda"):
-            device_props = torch.cuda.get_device_properties(torch.device(device))
-            device_properties[device] = {
-                "total_memory": device_props.total_memory,
-                "name": device_props.name
-            }
-            logging.info(f"ComfyUI-GGUF: Device {device} Memory: {device_props.total_memory / (1024 ** 3):.2f} GB")
-
-    # Step 2: Layer Analysis
     layer_summary = {}
     layer_list = []
     memory_by_type = defaultdict(int)
     total_memory = 0
 
-    # First pass: collect layers and calculate total memory
     for name, module in model.named_modules():
         if hasattr(module, "weight"):
             layer_type = type(module).__name__
             layer_summary[layer_type] = layer_summary.get(layer_type, 0) + 1
             layer_list.append((name, module, layer_type))
-
-            # Calculate memory for this layer
             layer_memory = 0
             if module.weight is not None:
                 layer_memory += module.weight.numel() * module.weight.element_size()
             if hasattr(module, "bias") and module.bias is not None:
                 layer_memory += module.bias.numel() * module.bias.element_size()
-            
             memory_by_type[layer_type] += layer_memory
             total_memory += layer_memory
 
-    # Step 3: Print Analysis Results as Tables
-    logging.info("\nGGML Layer Analysis")
-    logging.info("==================")
-    
-    # Layer Distribution Table
-    format_str = "{:<12} {:>8} {:>12} {:>8}"
-    logging.info("\nLayer Distribution:")
-    logging.info(format_str.format("Layer Type", "Layers", "Memory (MB)", "% Total"))
-    logging.info("-" * 42)
-    
+    logging.info("     DisTorch UNet GGML Layer Distribution")
+    logging.info(dash_line)
+    fmt_layer = "{:<12}{:>10}{:>14}{:>10}"
+    logging.info(fmt_layer.format("Layer Type", "Layers", "Memory (MB)", "% Total"))
+    logging.info(dash_line)
     for layer_type, count in layer_summary.items():
-        mem = memory_by_type[layer_type] / (1024 * 1024)  # MB
+        mem_mb = memory_by_type[layer_type] / (1024 * 1024)
         mem_percent = (memory_by_type[layer_type] / total_memory) * 100 if total_memory > 0 else 0
-        logging.info(format_str.format(
-            layer_type,
-            str(count),
-            f"{mem:.2f}",
-            f"{mem_percent:.1f}%"
-        ))
+        logging.info(fmt_layer.format(layer_type,str(count),f"{mem_mb:.2f}",f"{mem_percent:.1f}%"))
+    logging.info(dash_line)
 
-    # Step 4: Calculate Device Assignments
-    total_ratio = sum(DEVICE_RATIOS.values())
-    device_assignments = {device: [] for device in DEVICE_RATIOS.keys()}
-    
-    # Calculate layer counts for each device
+    nonzero_devices = [d for d, r in DEVICE_RATIOS_DISTORCH.items() if r > 0]
+    nonzero_total_ratio = sum(DEVICE_RATIOS_DISTORCH[d] for d in nonzero_devices)
+    device_assignments = {device: [] for device in DEVICE_RATIOS_DISTORCH.keys()}
     total_layers = len(layer_list)
     current_layer = 0
-    
-    for device, ratio in DEVICE_RATIOS.items():
-        if device == list(DEVICE_RATIOS.keys())[-1]:
-            # Last device gets all remaining layers
+
+    for idx, device in enumerate(nonzero_devices):
+        ratio = DEVICE_RATIOS_DISTORCH[device]
+        if idx == len(nonzero_devices) - 1:
             device_layer_count = total_layers - current_layer
         else:
-            device_layer_count = int((ratio / total_ratio) * total_layers)
-        
+            device_layer_count = int((ratio / nonzero_total_ratio) * total_layers)
         start_idx = current_layer
         end_idx = current_layer + device_layer_count
         device_assignments[device] = layer_list[start_idx:end_idx]
         current_layer += device_layer_count
 
-    # Device Assignment Table with corrected memory calculations
-    format_str = "{:<10} {:>8} {:>16} {:>10}"
-    logging.info("\nDevice Assignments:")
-    logging.info(format_str.format("Device", "Layers", "Memory (MB)", "% Total"))
-    logging.info("-" * 46)
-    
+    logging.info("    DisTorch Final Device/Layer Assignments")
+    logging.info(dash_line)
+    fmt_assign = "{:<12}{:>10}{:>14}{:>10}"
+    logging.info(fmt_assign.format("Device", "Layers", "Memory (MB)", "% Total"))
+    logging.info(dash_line)
     total_assigned_memory = 0
     device_memories = {}
-    
-    # Calculate memory per device
     for device, layers in device_assignments.items():
         device_memory = 0
-        # Calculate memory per layer type for this device
         for layer_type in layer_summary:
             type_layers = sum(1 for _, _, lt in layers if lt == layer_type)
-            if layer_summary[layer_type] > 0:  # Avoid div by zero
+            if layer_summary[layer_type] > 0:
                 mem_per_layer = memory_by_type[layer_type] / layer_summary[layer_type]
                 device_memory += mem_per_layer * type_layers
         device_memories[device] = device_memory
         total_assigned_memory += device_memory
 
-    # Print device assignments with memory percentages
-    for device, layers in device_assignments.items():
-        mem_mb = device_memories[device] / (1024 * 1024)  # Convert to MB
-        mem_percent = (device_memories[device] / total_memory) * 100 if total_memory > 0 else 0
-        logging.info(format_str.format(
-            device,
-            str(len(layers)),
-            f"{mem_mb:.2f}",
-            f"{mem_percent:.1f}%"
-        ))
+    sorted_assignments = sorted(device_assignments.keys(), key=lambda d: (d == "cpu", d))
 
-    # Verification log
-    total_mb = total_memory / (1024 * 1024)
-    assigned_mb = total_assigned_memory / (1024 * 1024)
-    logging.info(f"\nMemory Verification:")
-    logging.info(f"Total Model Memory: {total_mb:.2f} MB")
-    logging.info(f"Total Assigned Memory: {assigned_mb:.2f} MB")
-    if abs(total_mb - assigned_mb) > 0.01:  # Allow for minor floating point differences
-        logging.warning(f"Memory assignment mismatch: {abs(total_mb - assigned_mb):.2f} MB difference")
+    for dev in sorted_assignments:
+        layers = device_assignments[dev]
+        mem_mb = device_memories[dev] / (1024 * 1024)
+        mem_percent = (device_memories[dev] / total_memory) * 100 if total_memory > 0 else 0
+        logging.info(fmt_assign.format(dev,str(len(layers)),f"{mem_mb:.2f}",f"{mem_percent:.1f}%"))
+    logging.info(dash_line)
 
-    return {
-        "device_assignments": device_assignments
-    }
+    return {"device_assignments": device_assignments}
 
 def get_device_list():
     import torch
     return ["cpu"] + [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+
+
+
 
 class DeviceSelectorMultiGPU:
     @classmethod
@@ -384,16 +271,12 @@ def override_class_with_distorch(cls):
                 if key not in {"unet_name"}:
                     distorch_allocations[key] = kwargs.pop(key)
 
-            logging.info(f"MultiGPU: DisTorch - distorch_allocations: {distorch_allocations}")
-
             fn = getattr(super(), cls.FUNCTION)
             return fn(*args, **kwargs)
 
     return NodeOverrideDisTorch
 
-NODE_CLASS_MAPPINGS = {
-    "DeviceSelectorMultiGPU": DeviceSelectorMultiGPU
-}
+NODE_CLASS_MAPPINGS = {"DeviceSelectorMultiGPU": DeviceSelectorMultiGPU}
 
 def check_module_exists(module_path):
     full_path = os.path.join("custom_nodes", module_path)
@@ -796,13 +679,9 @@ def register_UnetLoaderGGUFDisTorchMultiGPU():
 
         def load_unet(self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None):
             from nodes import NODE_CLASS_MAPPINGS
-            logging.info("MultiGPU: GGUFDisTorch - Starting GGUFDisTorch UNet load")
-            
-            # Get the correct module through the original loader
             original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]
             module = sys.modules[original_loader.__module__]
-            logging.info(f"MultiGPU: GGUFDisTorch - Got GGUF module: {module}")
-            
+
             if not hasattr(module.GGUFModelPatcher, '_patched'):
                 original_load = module.GGUFModelPatcher.load
                 logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher not yet patched, applying patch")
