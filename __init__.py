@@ -306,6 +306,256 @@ def register_module(module_path, target_nodes):
     except Exception as e:
         logging.info(f"MultiGPU: Error processing {module_path}: {str(e)}")
 
+def register_UnetLoaderGGUFMultiGPU():
+    global NODE_CLASS_MAPPINGS
+
+    # First define the base UnetLoaderGGUF class
+    class UnetLoaderGGUF:
+        @classmethod
+        def INPUT_TYPES(s):
+            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
+            return {
+                "required": {
+                    "unet_name": (unet_names,),
+                }
+            }
+
+        RETURN_TYPES = ("MODEL",)
+        FUNCTION = "load_unet"
+        CATEGORY = "bootleg"
+        TITLE = "Unet Loader (GGUF)"
+
+        def load_unet(self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]()
+            return original_loader.load_unet(unet_name, dequant_dtype, patch_dtype, patch_on_device)
+
+    # Create the MultiGPU version of the base class
+    UnetLoaderGGUFMultiGPU = override_class(UnetLoaderGGUF)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFMultiGPU"] = UnetLoaderGGUFMultiGPU
+    logging.info(f"MultiGPU: Registered UnetLoaderGGUFMultiGPU")
+
+    # Now create the advanced version that inherits from the MultiGPU base class
+    class UnetLoaderGGUFAdvanced(UnetLoaderGGUF):
+        @classmethod
+        def INPUT_TYPES(s):
+            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
+            return {
+                "required": {
+                    "unet_name": (unet_names,),
+                    "dequant_dtype": (["default", "target", "float32", "float16", "bfloat16"], {"default": "default"}),
+                    "patch_dtype": (["default", "target", "float32", "float16", "bfloat16"], {"default": "default"}),
+                    "patch_on_device": ("BOOLEAN", {"default": False}),
+                }
+            }
+        TITLE = "Unet Loader (GGUF/Advanced)"
+
+    # Create the MultiGPU version of the advanced class
+    UnetLoaderGGUFAdvancedMultiGPU = override_class(UnetLoaderGGUFAdvanced)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedMultiGPU"] = UnetLoaderGGUFAdvancedMultiGPU
+    logging.info(f"MultiGPU: Registered UnetLoaderGGUFAdvancedMultiGPU")
+
+def register_UnetLoaderGGUFDisTorchMultiGPU():
+    global NODE_CLASS_MAPPINGS
+
+    # First define the base UnetLoaderGGUFDisTorch class
+    class UnetLoaderGGUFDisTorch:
+        @classmethod
+        def INPUT_TYPES(s):
+            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
+            return {
+                "required": {
+                    "unet_name": (unet_names,),
+                }
+            }
+
+        RETURN_TYPES = ("MODEL",)
+        FUNCTION = "load_unet"
+        CATEGORY = "bootleg"
+        TITLE = "Unet Loader (GGUFDisTorch)"
+
+        def load_unet(self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]
+            module = sys.modules[original_loader.__module__]
+
+            if not hasattr(module.GGUFModelPatcher, '_patched'):
+                original_load = module.GGUFModelPatcher.load
+                logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher not yet patched, applying patch")
+                
+                def new_load(self, *args, force_patch_weights=False, **kwargs):
+                    logging.info("MultiGPU: GGUFDisTorch - Entering patched GGUFDisTorch load function")
+
+                    # Save the current device states and logic
+                    global current_device, current_offload_device
+                    original_current_device = current_device
+                    original_current_offload_device = current_offload_device
+
+                    try:
+                        # Temporarily override the device logic for this load
+                        current_device = torch.device("cuda:0")
+                        current_offload_device = torch.device("cuda:1")
+
+                        logging.info(f"MultiGPU: GGUFDisTorch - Overriding current_device to {current_device}")
+                        logging.info(f"MultiGPU: GGUFDisTorch - Overriding current_offload_device to {current_offload_device}")
+
+                        # Call the original load function with the temporary overrides
+                        super(module.GGUFModelPatcher, self).load(*args, force_patch_weights=True, **kwargs)
+
+                        if not self.mmap_released:
+                            logging.info("MultiGPU: GGUFDisTorch - Processing mmap release")
+                            linked = []
+                            
+                            # Debug the lowvram check
+                            lowvram_value = kwargs.get("lowvram_model_memory", 0)
+                            logging.info(f"MultiGPU: GGUFDisTorch - lowvram_model_memory value: {lowvram_value}")
+                            
+                            if lowvram_value > 0:
+                                logging.info("MultiGPU: GGUFDisTorch - Entering module scanning")
+                                module_count = 0
+                                for n, m in self.model.named_modules():
+                                    module_count += 1
+                                    if hasattr(m, "weight"):
+                                        device = getattr(m.weight, "device", None)
+                                        # logging.info(f"MultiGPU: GGUFDisTorch - Module {n} on device {device}, offload_device is {self.offload_device}")
+                                        if device == self.offload_device:
+                                            linked.append((n, m))
+                                logging.info(f"MultiGPU: GGUFDisTorch - Scanned {module_count} total modules")
+                            else:
+                                logging.info("MultiGPU: GGUFDisTorch - Skipped module scanning due to lowvram check")
+                            
+                            if linked:
+                                logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules")
+                                device_assignments = analyze_ggml_loading(self.model)['device_assignments']
+                                for device, layers in device_assignments.items():
+                                    target_device = torch.device(device)
+                                    logging.info(f"MultiGPU: GGUFDisTorch - Moving {len(layers)} layers to {device}")
+                                    for n, m, _ in layers:
+                                        try:
+                                            m.to(self.load_device).to(target_device)
+                                         #   logging.info(f"MultiGPU: GGUFDisTorch - Successfully moved layer {n} to {device}")
+                                        except Exception as e:
+                                            logging.error(f"MultiGPU: GGUFDisTorch - Error moving layer {n} to {device}: {str(e)}")
+                                self.mmap_released = True
+                                logging.info("MultiGPU: GGUFDisTorch - mmap release complete")
+                    
+                    finally:
+                        # Restore the original device states
+                        current_device = original_current_device
+                        current_offload_device = original_current_offload_device
+
+                        logging.info(f"MultiGPU: GGUFDisTorch - Restored current_device to {current_device}")
+                        logging.info(f"MultiGPU: GGUFDisTorch - Restored current_offload_device to {current_offload_device}")
+
+                module.GGUFModelPatcher.load = new_load
+                module.GGUFModelPatcher._patched = True
+                logging.info("MultiGPU: GGUFDisTorch - Successfully patched GGUF ModelPatcher")
+            else:
+                logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher already patched")
+
+            logging.info("MultiGPU: GGUFDisTorch - Calling original GGUF loader")
+            loader_instance = original_loader()
+            return loader_instance.load_unet(unet_name, dequant_dtype, patch_dtype, patch_on_device)
+
+
+    # Create the MultiGPU version of the base class
+    UnetLoaderGGUFDisTorchMultiGPU = override_class_with_distorch(UnetLoaderGGUFDisTorch)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFDisTorchMultiGPU"] = UnetLoaderGGUFDisTorchMultiGPU
+    logging.info(f"MultiGPU: Registered UnetLoaderGGUFDisTorchMultiGPU")
+
+def register_CLIPLoaderGGUFMultiGPU():
+    global NODE_CLASS_MAPPINGS
+
+    class CLIPLoaderGGUF:
+        @classmethod
+        def INPUT_TYPES(s):
+            return {
+                "required": {
+                    "clip_name": (s.get_filename_list(),),
+                    "type": (["stable_diffusion", "stable_cascade", "sd3", "stable_audio", "mochi", "ltxv"],),
+                }
+            }
+
+        RETURN_TYPES = ("CLIP",)
+        FUNCTION = "load_clip"
+        CATEGORY = "bootleg"
+        TITLE = "CLIPLoader (GGUF)"
+
+        @classmethod
+        def get_filename_list(s):
+            files = []
+            files += folder_paths.get_filename_list("clip")
+            files += folder_paths.get_filename_list("clip_gguf")
+            return sorted(files)
+
+        def load_data(self, ckpt_paths):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
+            return original_loader.load_data(ckpt_paths)
+
+        def load_patcher(self, clip_paths, clip_type, clip_data):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
+            return original_loader.load_patcher(clip_paths, clip_type, clip_data)
+
+        def load_clip(self, clip_name, type="stable_diffusion"):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
+            return original_loader.load_clip(clip_name, type)
+
+    # Create the MultiGPU version of the base class
+    CLIPLoaderGGUFMultiGPU = override_class(CLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFMultiGPU"] = CLIPLoaderGGUFMultiGPU
+    logging.info(f"MultiGPU: Registered CLIPLoaderGGUFMultiGPU")
+
+    # Now create the advanced version that inherits from the MultiGPU base class
+
+    class DualCLIPLoaderGGUF(CLIPLoaderGGUF):
+        @classmethod
+        def INPUT_TYPES(s):
+            file_options = (s.get_filename_list(), )
+            return {
+                "required": {
+                    "clip_name1": file_options,
+                    "clip_name2": file_options,
+                    "type": (("sdxl", "sd3", "flux", "hunyuan_video"),),
+                }
+            }
+
+        TITLE = "DualCLIPLoader (GGUF)"
+
+        def load_clip(self, clip_name1, clip_name2, type):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUF"]()
+            return original_loader.load_clip(clip_name1, clip_name2, type)
+    # Create the MultiGPU version of the advanced class
+    DualCLIPLoaderGGUFMultiGPU = override_class(DualCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFMultiGPU"] = DualCLIPLoaderGGUFMultiGPU
+    logging.info(f"MultiGPU: Registered DualCLIPLoaderGGUFMultiGPU")
+
+    class TripleCLIPLoaderGGUF(CLIPLoaderGGUF):
+        @classmethod
+        def INPUT_TYPES(s):
+            file_options = (s.get_filename_list(), )
+            return {
+                "required": {
+                    "clip_name1": file_options,
+                    "clip_name2": file_options,
+                    "clip_name3": file_options,
+                }
+            }
+
+        TITLE = "TripleCLIPLoader (GGUF)"
+
+        def load_clip(self, clip_name1, clip_name2, clip_name3, type="sd3"):
+            from nodes import NODE_CLASS_MAPPINGS
+            original_loader = NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUF"]()
+            return original_loader.load_clip(clip_name1, clip_name2, clip_name3, type)
+    # Create the MultiGPU version of the advanced class
+    TripleCLIPLoaderGGUFMultiGPU = override_class(TripleCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFMultiGPU"] = TripleCLIPLoaderGGUFMultiGPU
+    logging.info(f"MultiGPU: Registered TripleCLIPLoaderGGUFMultiGPU")
+
 def register_LTXVLoaderMultiGPU():
     global NODE_CLASS_MAPPINGS
         
@@ -608,256 +858,6 @@ def register_MMAudioSamplerMultiGPU():
         
     NODE_CLASS_MAPPINGS["MMAudioSamplerMultiGPU"] = override_class(MMAudioSampler)
     logging.info(f"MultiGPU: Registered MMAudioSamplerMultiGPU")
-
-def register_UnetLoaderGGUFMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    # First define the base UnetLoaderGGUF class
-    class UnetLoaderGGUF:
-        @classmethod
-        def INPUT_TYPES(s):
-            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
-            return {
-                "required": {
-                    "unet_name": (unet_names,),
-                }
-            }
-
-        RETURN_TYPES = ("MODEL",)
-        FUNCTION = "load_unet"
-        CATEGORY = "bootleg"
-        TITLE = "Unet Loader (GGUF)"
-
-        def load_unet(self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]()
-            return original_loader.load_unet(unet_name, dequant_dtype, patch_dtype, patch_on_device)
-
-    # Create the MultiGPU version of the base class
-    UnetLoaderGGUFMultiGPU = override_class(UnetLoaderGGUF)
-    NODE_CLASS_MAPPINGS["UnetLoaderGGUFMultiGPU"] = UnetLoaderGGUFMultiGPU
-    logging.info(f"MultiGPU: Registered UnetLoaderGGUFMultiGPU")
-
-    # Now create the advanced version that inherits from the MultiGPU base class
-    class UnetLoaderGGUFAdvanced(UnetLoaderGGUF):
-        @classmethod
-        def INPUT_TYPES(s):
-            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
-            return {
-                "required": {
-                    "unet_name": (unet_names,),
-                    "dequant_dtype": (["default", "target", "float32", "float16", "bfloat16"], {"default": "default"}),
-                    "patch_dtype": (["default", "target", "float32", "float16", "bfloat16"], {"default": "default"}),
-                    "patch_on_device": ("BOOLEAN", {"default": False}),
-                }
-            }
-        TITLE = "Unet Loader (GGUF/Advanced)"
-
-    # Create the MultiGPU version of the advanced class
-    UnetLoaderGGUFAdvancedMultiGPU = override_class(UnetLoaderGGUFAdvanced)
-    NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedMultiGPU"] = UnetLoaderGGUFAdvancedMultiGPU
-    logging.info(f"MultiGPU: Registered UnetLoaderGGUFAdvancedMultiGPU")
-
-def register_UnetLoaderGGUFDisTorchMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    # First define the base UnetLoaderGGUFDisTorch class
-    class UnetLoaderGGUFDisTorch:
-        @classmethod
-        def INPUT_TYPES(s):
-            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
-            return {
-                "required": {
-                    "unet_name": (unet_names,),
-                }
-            }
-
-        RETURN_TYPES = ("MODEL",)
-        FUNCTION = "load_unet"
-        CATEGORY = "bootleg"
-        TITLE = "Unet Loader (GGUFDisTorch)"
-
-        def load_unet(self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]
-            module = sys.modules[original_loader.__module__]
-
-            if not hasattr(module.GGUFModelPatcher, '_patched'):
-                original_load = module.GGUFModelPatcher.load
-                logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher not yet patched, applying patch")
-                
-                def new_load(self, *args, force_patch_weights=False, **kwargs):
-                    logging.info("MultiGPU: GGUFDisTorch - Entering patched GGUFDisTorch load function")
-
-                    # Save the current device states and logic
-                    global current_device, current_offload_device
-                    original_current_device = current_device
-                    original_current_offload_device = current_offload_device
-
-                    try:
-                        # Temporarily override the device logic for this load
-                        current_device = torch.device("cuda:0")
-                        current_offload_device = torch.device("cuda:1")
-
-                        logging.info(f"MultiGPU: GGUFDisTorch - Overriding current_device to {current_device}")
-                        logging.info(f"MultiGPU: GGUFDisTorch - Overriding current_offload_device to {current_offload_device}")
-
-                        # Call the original load function with the temporary overrides
-                        super(module.GGUFModelPatcher, self).load(*args, force_patch_weights=True, **kwargs)
-
-                        if not self.mmap_released:
-                            logging.info("MultiGPU: GGUFDisTorch - Processing mmap release")
-                            linked = []
-                            
-                            # Debug the lowvram check
-                            lowvram_value = kwargs.get("lowvram_model_memory", 0)
-                            logging.info(f"MultiGPU: GGUFDisTorch - lowvram_model_memory value: {lowvram_value}")
-                            
-                            if lowvram_value > 0:
-                                logging.info("MultiGPU: GGUFDisTorch - Entering module scanning")
-                                module_count = 0
-                                for n, m in self.model.named_modules():
-                                    module_count += 1
-                                    if hasattr(m, "weight"):
-                                        device = getattr(m.weight, "device", None)
-                                        # logging.info(f"MultiGPU: GGUFDisTorch - Module {n} on device {device}, offload_device is {self.offload_device}")
-                                        if device == self.offload_device:
-                                            linked.append((n, m))
-                                logging.info(f"MultiGPU: GGUFDisTorch - Scanned {module_count} total modules")
-                            else:
-                                logging.info("MultiGPU: GGUFDisTorch - Skipped module scanning due to lowvram check")
-                            
-                            if linked:
-                                logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules")
-                                device_assignments = analyze_ggml_loading(self.model)['device_assignments']
-                                for device, layers in device_assignments.items():
-                                    target_device = torch.device(device)
-                                    logging.info(f"MultiGPU: GGUFDisTorch - Moving {len(layers)} layers to {device}")
-                                    for n, m, _ in layers:
-                                        try:
-                                            m.to(self.load_device).to(target_device)
-                                         #   logging.info(f"MultiGPU: GGUFDisTorch - Successfully moved layer {n} to {device}")
-                                        except Exception as e:
-                                            logging.error(f"MultiGPU: GGUFDisTorch - Error moving layer {n} to {device}: {str(e)}")
-                                self.mmap_released = True
-                                logging.info("MultiGPU: GGUFDisTorch - mmap release complete")
-                    
-                    finally:
-                        # Restore the original device states
-                        current_device = original_current_device
-                        current_offload_device = original_current_offload_device
-
-                        logging.info(f"MultiGPU: GGUFDisTorch - Restored current_device to {current_device}")
-                        logging.info(f"MultiGPU: GGUFDisTorch - Restored current_offload_device to {current_offload_device}")
-
-                module.GGUFModelPatcher.load = new_load
-                module.GGUFModelPatcher._patched = True
-                logging.info("MultiGPU: GGUFDisTorch - Successfully patched GGUF ModelPatcher")
-            else:
-                logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher already patched")
-
-            logging.info("MultiGPU: GGUFDisTorch - Calling original GGUF loader")
-            loader_instance = original_loader()
-            return loader_instance.load_unet(unet_name, dequant_dtype, patch_dtype, patch_on_device)
-
-
-    # Create the MultiGPU version of the base class
-    UnetLoaderGGUFDisTorchMultiGPU = override_class_with_distorch(UnetLoaderGGUFDisTorch)
-    NODE_CLASS_MAPPINGS["UnetLoaderGGUFDisTorchMultiGPU"] = UnetLoaderGGUFDisTorchMultiGPU
-    logging.info(f"MultiGPU: Registered UnetLoaderGGUFDisTorchMultiGPU")
-
-def register_CLIPLoaderGGUFMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    class CLIPLoaderGGUF:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "clip_name": (s.get_filename_list(),),
-                    "type": (["stable_diffusion", "stable_cascade", "sd3", "stable_audio", "mochi", "ltxv"],),
-                }
-            }
-
-        RETURN_TYPES = ("CLIP",)
-        FUNCTION = "load_clip"
-        CATEGORY = "bootleg"
-        TITLE = "CLIPLoader (GGUF)"
-
-        @classmethod
-        def get_filename_list(s):
-            files = []
-            files += folder_paths.get_filename_list("clip")
-            files += folder_paths.get_filename_list("clip_gguf")
-            return sorted(files)
-
-        def load_data(self, ckpt_paths):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
-            return original_loader.load_data(ckpt_paths)
-
-        def load_patcher(self, clip_paths, clip_type, clip_data):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
-            return original_loader.load_patcher(clip_paths, clip_type, clip_data)
-
-        def load_clip(self, clip_name, type="stable_diffusion"):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
-            return original_loader.load_clip(clip_name, type)
-
-    # Create the MultiGPU version of the base class
-    CLIPLoaderGGUFMultiGPU = override_class(CLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFMultiGPU"] = CLIPLoaderGGUFMultiGPU
-    logging.info(f"MultiGPU: Registered CLIPLoaderGGUFMultiGPU")
-
-    # Now create the advanced version that inherits from the MultiGPU base class
-
-    class DualCLIPLoaderGGUF(CLIPLoaderGGUF):
-        @classmethod
-        def INPUT_TYPES(s):
-            file_options = (s.get_filename_list(), )
-            return {
-                "required": {
-                    "clip_name1": file_options,
-                    "clip_name2": file_options,
-                    "type": (("sdxl", "sd3", "flux", "hunyuan_video"),),
-                }
-            }
-
-        TITLE = "DualCLIPLoader (GGUF)"
-
-        def load_clip(self, clip_name1, clip_name2, type):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUF"]()
-            return original_loader.load_clip(clip_name1, clip_name2, type)
-    # Create the MultiGPU version of the advanced class
-    DualCLIPLoaderGGUFMultiGPU = override_class(DualCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFMultiGPU"] = DualCLIPLoaderGGUFMultiGPU
-    logging.info(f"MultiGPU: Registered DualCLIPLoaderGGUFMultiGPU")
-
-    class TripleCLIPLoaderGGUF(CLIPLoaderGGUF):
-        @classmethod
-        def INPUT_TYPES(s):
-            file_options = (s.get_filename_list(), )
-            return {
-                "required": {
-                    "clip_name1": file_options,
-                    "clip_name2": file_options,
-                    "clip_name3": file_options,
-                }
-            }
-
-        TITLE = "TripleCLIPLoader (GGUF)"
-
-        def load_clip(self, clip_name1, clip_name2, clip_name3, type="sd3"):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUF"]()
-            return original_loader.load_clip(clip_name1, clip_name2, clip_name3, type)
-    # Create the MultiGPU version of the advanced class
-    TripleCLIPLoaderGGUFMultiGPU = override_class(TripleCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFMultiGPU"] = TripleCLIPLoaderGGUFMultiGPU
-    logging.info(f"MultiGPU: Registered TripleCLIPLoaderGGUFMultiGPU")
  
 def register_PulidModelLoader():
 
