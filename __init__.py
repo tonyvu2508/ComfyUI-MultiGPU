@@ -38,10 +38,6 @@ def analyze_ggml_loading(model):
 
     DEVICE_RATIOS_DISTORCH = {}
     device_table = {}
-
-
-
-
     primary_dev_name = distorch_allocations.get("compute_device")
     primary_total_mem_bytes = comfy.model_management.get_total_memory(torch.device(primary_dev_name))
     primary_fraction = distorch_allocations.get("compute_device_alloc", 0.0)
@@ -296,22 +292,13 @@ def check_module_exists(module_path):
     logging.info(f"MultiGPU: Found {module_path}, creating compatible MultiGPU nodes")
     return True
 
-def register_module(module_path, target_nodes):
-    try:
-        # For core nodes, skip module loading and just register from the global mappings
-        if not module_path:
-            logging.info("MultiGPU: Starting core node registration")
-            from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
-            for node in target_nodes:
-                if node in GLOBAL_NODE_CLASS_MAPPINGS:
-                    NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[node])
-                    logging.info(f"MultiGPU: Registered core node {node}")
-                else:
-                    logging.info(f"MultiGPU: Core node {node} not found - this shouldn't happen!")
-            return
+def register_module(target_nodes):
+    from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
+    
+    for node in target_nodes:
+            NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[node])
+    return
 
-    except Exception as e:
-        logging.info(f"MultiGPU: Error processing {module_path}: {str(e)}")
 
 def register_UnetLoaderGGUFMultiGPU():
     global NODE_CLASS_MAPPINGS
@@ -392,71 +379,34 @@ def register_UnetLoaderGGUFDisTorchMultiGPU():
                 logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher not yet patched, applying patch")
                 
                 def new_load(self, *args, force_patch_weights=False, **kwargs):
-                    logging.info("MultiGPU: GGUFDisTorch - Entering patched GGUFDisTorch load function")
 
-                    # Save the current device states and logic
-                    global current_device, current_offload_device
-                    original_current_device = current_device
-                    original_current_offload_device = current_offload_device
+                    super(module.GGUFModelPatcher, self).load(*args, force_patch_weights=True, **kwargs)
 
-                    try:
-                        # Temporarily override the device logic for this load
-                        current_device = distorch_compute_device
-                        current_offload_device = distorch_compute_device
-
-                        logging.info(f"MultiGPU: GGUFDisTorch - Overriding current_device to {current_device}")
-                        logging.info(f"MultiGPU: GGUFDisTorch - Overriding current_offload_device to {current_offload_device}")
-
-                        # Call the original load function with the temporary overrides
-                        super(module.GGUFModelPatcher, self).load(*args, force_patch_weights=True, **kwargs)
-
-                        if not self.mmap_released:
-                            logging.info("MultiGPU: GGUFDisTorch - Processing mmap release")
-                            linked = []
-                            
-                            # Debug the lowvram check
-                            lowvram_value = kwargs.get("lowvram_model_memory", 0)
-                            logging.info(f"MultiGPU: GGUFDisTorch - lowvram_model_memory value: {lowvram_value}")
-                            
-                            if lowvram_value > 0:
-                                logging.info("MultiGPU: GGUFDisTorch - Entering module scanning")
-                                module_count = 0
-                                for n, m in self.model.named_modules():
-                                    module_count += 1
-                                    if hasattr(m, "weight"):
-                                        device = getattr(m.weight, "device", None)
-                                        # logging.info(f"MultiGPU: GGUFDisTorch - Weight Module {n} on device {device}, offload_device is {self.offload_device}")
-                                        if device is not None:
-                                            linked.append((n, m))
-                                            continue
-                                    if hasattr(m, "bias"):
-                                        device = getattr(m.bias, "device", None)
-                                        # logging.info(f"MultiGPU: GGUFDisTorch - Bias Module {n} on device {device}, offload_device is {self.offload_device}")
-                                        if device is not None:
-                                            linked.append((n, m))
-                                            continue
-                            if linked:
-                                logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules, computing reallocation")
-                                device_assignments = analyze_ggml_loading(self.model)['device_assignments']
-                                for device, layers in device_assignments.items():
-                                    target_device = torch.device(device)
-                                    logging.info(f"MultiGPU: GGUFDisTorch - Moving {len(layers)} layers to {device}")
-                                    for n, m, _ in layers:
-                                        try:
-                                            m.to(self.load_device).to(target_device)
-                                            # logging.info(f"MultiGPU: GGUFDisTorch - Successfully moved layer {n} to {device}")
-                                        except Exception as e:
-                                            logging.error(f"MultiGPU: GGUFDisTorch - Error moving layer {n} to {device}: {str(e)}")
-                                self.mmap_released = True
-                                logging.info("MultiGPU: GGUFDisTorch - mmap release complete")
-                    
-                    finally:
-                        # Restore the original device states
-                        current_device = original_current_device
-                        current_offload_device = original_current_offload_device
-
-                        logging.info(f"MultiGPU: GGUFDisTorch - Restored current_device to {current_device}")
-                        logging.info(f"MultiGPU: GGUFDisTorch - Restored current_offload_device to {current_offload_device}")
+                    if not self.mmap_released:
+                        linked = []
+                        if kwargs.get("lowvram_model_memory", 0) > 0:
+                            module_count = 0
+                            for n, m in self.model.named_modules():
+                                module_count += 1
+                                if hasattr(m, "weight"):
+                                    device = getattr(m.weight, "device", None)     # logging.info(f"MultiGPU: GGUFDisTorch - Weight Module {n} on device {device}, offload_device is {self.offload_device}")
+                                    if device is not None:
+                                        linked.append((n, m))
+                                        continue
+                                if hasattr(m, "bias"):
+                                    device = getattr(m.bias, "device", None)      # logging.info(f"MultiGPU: GGUFDisTorch - Bias Module {n} on device {device}, offload_device is {self.offload_device}")
+                                    if device is not None:
+                                        linked.append((n, m))
+                                        continue
+                        if linked:
+                            logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules, computing reallocation")
+                            device_assignments = analyze_ggml_loading(self.model)['device_assignments']
+                            for device, layers in device_assignments.items():
+                                target_device = torch.device(device)
+                                logging.info(f"MultiGPU: GGUFDisTorch - Moving {len(layers)} layers to {device}")
+                                for n, m, _ in layers:
+                                    m.to(self.load_device).to(target_device)
+                            self.mmap_released = True
 
                 module.GGUFModelPatcher.load = new_load
                 module.GGUFModelPatcher._patched = True
@@ -511,6 +461,8 @@ def register_CLIPLoaderGGUFMultiGPU():
 
         def load_clip(self, clip_name, type="stable_diffusion"):
             from nodes import NODE_CLASS_MAPPINGS
+
+            
             original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
             return original_loader.load_clip(clip_name, type)
 
@@ -1090,8 +1042,7 @@ def register_DownloadAndLoadHyVideoTextEncoder():
     logging.info(f"MultiGPU: Registered DownloadAndLoadHyVideoTextEncoderMultiGPU")
 
 # Register desired nodes
-register_module("",                         ["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
-
+register_module(["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
 if check_module_exists("ComfyUI-LTXVideo"):
     register_LTXVLoaderMultiGPU()
 if check_module_exists("ComfyUI-Florence2"):
