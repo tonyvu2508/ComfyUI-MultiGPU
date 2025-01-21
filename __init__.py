@@ -51,7 +51,7 @@ comfy.model_management.unet_offload_device = unet_offload_device_patched
 comfy.model_management.text_encoder_device = text_encoder_device_patched
 comfy.model_management.text_encoder_offload_device = text_encoder_offload_device_patched
 
-def register_patched_ggufmodelpatcher():
+def register_patched_ggufmodelpatcher(node_instance):
     from nodes import NODE_CLASS_MAPPINGS
     original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]
     module = sys.modules[original_loader.__module__]
@@ -69,7 +69,7 @@ def register_patched_ggufmodelpatcher():
                 module_count += 1
                 if hasattr(m, "weight"):
                     device = getattr(m.weight, "device", None)     
-                    #logging.info(f"MultiGPU: GGUFDisTorch - Weight Module {n} on device {device}, offload_device is {self.offload_device}")
+                    logging.info(f"MultiGPU: GGUFDisTorch - Weight Module {n} on device {device}, offload_device is {self.offload_device}")
                     if device is not None:
                         linked.append((n, m))
                         continue
@@ -82,10 +82,11 @@ def register_patched_ggufmodelpatcher():
                 logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules out of {module_count} total modules")
             if linked:
                     logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules, computing reallocation")
-                    device_assignments = analyze_ggml_loading(self.model)['device_assignments']
+                    device_assignments = analyze_ggml_loading(self.model, node_instance.distorch_allocations)['device_assignments']
                     for device, layers in device_assignments.items():
-                        target_device = torch.device(device)
                         logging.info(f"MultiGPU: GGUFDisTorch - Moving {len(layers)} layers to {device}")
+                        target_device = torch.device(device)
+                        #logging.info(f"MultiGPU: GGUFDisTorch - Moving {len(layers)} layers to {device}")
                         for n, m, _ in layers:
                             m.to(self.load_device).to(target_device)
                 
@@ -100,7 +101,7 @@ def register_patched_ggufmodelpatcher():
         logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher already patched")
 
 
-def analyze_ggml_loading(model):
+def analyze_ggml_loading(model, distorch_allocations):
 
     DEVICE_RATIOS_DISTORCH = {}
     device_table = {}
@@ -304,6 +305,11 @@ def override_class_with_offload(cls):
 
 def override_class_with_distorch(cls):
     class NodeOverrideDisTorch(cls):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.distorch_allocations = {}
+            self.distorch_compute_device = None
+
         @classmethod
         def INPUT_TYPES(s):
             inputs = copy.deepcopy(cls.INPUT_TYPES())
@@ -327,21 +333,19 @@ def override_class_with_distorch(cls):
 
 
         def override(self, *args, **kwargs):
-            global current_device
-            global distorch_allocations
-            global distorch_compute_device
-            distorch_allocations = {}
-            distorch_compute_device = kwargs.get("compute_device", None)
-            if distorch_compute_device is not None:
-                current_device = distorch_compute_device
+            self.distorch_allocations = {}
+            self.distorch_compute_device = kwargs.get("compute_device", None)
+            if self.distorch_compute_device is not None:
+                global current_device
+                current_device = self.distorch_compute_device
             
-            register_patched_ggufmodelpatcher()
+            register_patched_ggufmodelpatcher(self)
 
             for key, value in list(kwargs.items()):
                 if key not in {"unet_name", "clip_name1", "clip_name2", "clip_name2", "type"}:
                     logging.info(f"MultiGPU: Removing {key} from kwargs")
                     logging.info(f"MultiGPU: Value: {value}")
-                    distorch_allocations[key] = kwargs.pop(key)
+                    self.distorch_allocations[key] = kwargs.pop(key)
 
             fn = getattr(super(), cls.FUNCTION)
             return fn(*args, **kwargs)
