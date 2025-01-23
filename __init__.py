@@ -365,11 +365,9 @@ def register_module(target_nodes):
             NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[node])
     return
 
-
 def register_UnetLoaderGGUFMultiGPU():
     global NODE_CLASS_MAPPINGS
 
-    # First define the base UnetLoaderGGUF class
     class UnetLoaderGGUF:
         @classmethod
         def INPUT_TYPES(s):
@@ -390,12 +388,15 @@ def register_UnetLoaderGGUFMultiGPU():
             original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]()
             return original_loader.load_unet(unet_name, dequant_dtype, patch_dtype, patch_on_device)
 
-    # Create the MultiGPU version of the base class
+    # Create both MultiGPU versions of the base class
     UnetLoaderGGUFMultiGPU = override_class(UnetLoaderGGUF)
     NODE_CLASS_MAPPINGS["UnetLoaderGGUFMultiGPU"] = UnetLoaderGGUFMultiGPU
     logging.info(f"MultiGPU: Registered UnetLoaderGGUFMultiGPU")
 
-    # Now create the advanced version that inherits from the MultiGPU base class
+    UnetLoaderGGUFDisTorchMultiGPU = override_class_with_distorch(UnetLoaderGGUF)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFDisTorchMultiGPU"] = UnetLoaderGGUFDisTorchMultiGPU
+    logging.info(f"MultiGPU: Registered UnetLoaderGGUFDisTorchMultiGPU")
+
     class UnetLoaderGGUFAdvanced(UnetLoaderGGUF):
         @classmethod
         def INPUT_TYPES(s):
@@ -410,40 +411,14 @@ def register_UnetLoaderGGUFMultiGPU():
             }
         TITLE = "Unet Loader (GGUF/Advanced)"
 
-    # Create the MultiGPU version of the advanced class
+    # Create both MultiGPU versions of the advanced class
     UnetLoaderGGUFAdvancedMultiGPU = override_class(UnetLoaderGGUFAdvanced)
     NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedMultiGPU"] = UnetLoaderGGUFAdvancedMultiGPU
     logging.info(f"MultiGPU: Registered UnetLoaderGGUFAdvancedMultiGPU")
 
-def register_UnetLoaderGGUFDisTorchMultiGPU():
-    global NODE_CLASS_MAPPINGS
-    global distorch_compute_device
-
-    # First define the base UnetLoaderGGUFDisTorch class
-    class UnetLoaderGGUFDisTorch:
-        @classmethod
-        def INPUT_TYPES(s):
-            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
-            return {
-                "required": {
-                    "unet_name": (unet_names,),
-                }
-            }
-
-        RETURN_TYPES = ("MODEL",)
-        FUNCTION = "load_unet"
-        CATEGORY = "bootleg"
-        TITLE = "Unet Loader (GGUFDisTorch)"
-
-        def load_unet(self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]()
-            return original_loader.load_unet(unet_name, dequant_dtype, patch_dtype, patch_on_device)
-
-    # Create the MultiGPU version of the base class
-    UnetLoaderGGUFDisTorchMultiGPU = override_class_with_distorch(UnetLoaderGGUFDisTorch)
-    NODE_CLASS_MAPPINGS["UnetLoaderGGUFDisTorchMultiGPU"] = UnetLoaderGGUFDisTorchMultiGPU
-    logging.info(f"MultiGPU: Registered UnetLoaderGGUFDisTorchMultiGPU")
+    UnetLoaderGGUFAdvancedDisTorchMultiGPU = override_class_with_distorch(UnetLoaderGGUFAdvanced)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedDisTorchMultiGPU"] = UnetLoaderGGUFAdvancedDisTorchMultiGPU
+    logging.info(f"MultiGPU: Registered UnetLoaderGGUFAdvancedDisTorchMultiGPU")
 
 def register_CLIPLoaderGGUFMultiGPU():
     global NODE_CLASS_MAPPINGS
