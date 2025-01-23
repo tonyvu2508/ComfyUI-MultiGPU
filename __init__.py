@@ -1,15 +1,12 @@
-import time
 import copy
 import torch
 import sys
 import comfy.model_management
 import os
 from pathlib import Path
-import importlib.util
 import logging
 import folder_paths
 from collections import defaultdict
-import builtins
 
 current_device = comfy.model_management.get_torch_device()
 current_offload_device = comfy.model_management.get_torch_device()
@@ -100,7 +97,6 @@ def register_patched_ggufmodelpatcher(node_instance):
     else:
         logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher already patched")
 
-
 def analyze_ggml_loading(model, distorch_allocations):
 
     DEVICE_RATIOS_DISTORCH = {}
@@ -172,7 +168,7 @@ def analyze_ggml_loading(model, distorch_allocations):
             memory_by_type[layer_type] += layer_memory
             total_memory += layer_memory
 
-    logging.info("     DisTorch UNet GGML Layer Distribution")
+    logging.info("     DisTorch GGML Layer Distribution")
     logging.info(dash_line)
     fmt_layer = "{:<12}{:>10}{:>14}{:>10}"
     logging.info(fmt_layer.format("Layer Type", "Layers", "Memory (MB)", "% Total"))
@@ -231,9 +227,6 @@ def analyze_ggml_loading(model, distorch_allocations):
 def get_device_list():
     import torch
     return ["cpu"] + [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-
-
-
 
 class DeviceSelectorMultiGPU:
     @classmethod
