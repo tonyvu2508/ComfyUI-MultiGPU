@@ -4,39 +4,27 @@ import torch
 from collections import defaultdict
 import comfy.model_management
 import copy
+import hashlib
 
 model_allocation_store = {}
 
 def create_model_hash(model, caller):
-   import hashlib
-   
-   logging.info(f"\nMultiGPU: Hash creation from {caller}")
 
-   # Model type, size, and first 3 layers as identifier
    model_type = type(model.model).__name__
    model_size = model.model_size()
    first_layers = str(list(model.model_state_dict().keys())[:3])
-   
-   logging.info(f"MultiGPU: Type: {model_type}")
-   logging.info(f"MultiGPU: Size: {model_size}")
-   logging.info(f"MultiGPU: Layer sample: {first_layers}")
-
    identifier = f"{model_type}_{model_size}_{first_layers}"
    final_hash = hashlib.sha256(identifier.encode()).hexdigest()
-   logging.info(f"MultiGPU: Hash: {final_hash}")
-   
+ 
    return final_hash
 
-# Add to both places as specified  
-
-def register_patched_ggufmodelpatcher(): # Removed node_instance parameter
+def register_patched_ggufmodelpatcher():
     from nodes import NODE_CLASS_MAPPINGS
     original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]
     module = sys.modules[original_loader.__module__]
 
     if not hasattr(module.GGUFModelPatcher, '_patched'):
         original_load = module.GGUFModelPatcher.load
-        logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher not yet patched, applying patch")
 
         def new_load(self, *args, force_patch_weights=False, **kwargs):
             global model_allocation_store
@@ -49,45 +37,31 @@ def register_patched_ggufmodelpatcher(): # Removed node_instance parameter
                 module_count += 1
                 if hasattr(m, "weight"):
                     device = getattr(m.weight, "device", None)
-                    #logging.info(f"MultiGPU: GGUFDisTorch - Weight Module {n} on device {device}, offload_device is {self.offload_device}")
                     if device is not None:
                         linked.append((n, m))
                         continue
                 if hasattr(m, "bias"):
                     device = getattr(m.bias, "device", None)
-                    #logging.info(f"MultiGPU: GGUFDisTorch - Bias Module {n} on device {device}, offload_device is {self.offload_device}")
                     if device is not None:
                         linked.append((n, m))
                         continue
-                #logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules out of {module_count} total modules")
             if linked:
-                    #logging.info(f"MultiGPU: GGUFDisTorch - Found {len(linked)} linked modules, computing reallocation")
                     if hasattr(self, 'model'):
                         debug_hash = create_model_hash(self, "patcher")
                         debug_allocations = model_allocation_store.get(debug_hash)
-                        logging.info(f"MultiGPU: Hash lookup - Found allocations: {debug_allocations}")
-                        logging.info(f"MultiGPU: LOOKUP - Hash {debug_hash}")
-                        if debug_allocations: # No need for else case as per instruction
-                            logging.info(f"MultiGPU: FOUND - Hash matches, using allocations: {debug_allocations}")
-                            device_assignments = analyze_ggml_loading(self.model, debug_allocations)['device_assignments'] # Use debug_allocations
+                        if debug_allocations:
+                            device_assignments = analyze_ggml_loading(self.model, debug_allocations)['device_assignments']
                             for device, layers in device_assignments.items():
-                                #logging.info(f"MultiGPU: GGUFDisTorch - Moving {len(layers)} layers to {device}")
                                 target_device = torch.device(device)
-                                #logging.info(f"MultiGPU: GGUFDisTorch - Moving {len(layers)} layers to {device}")
                                 for n, m, _ in layers:
                                     m.to(self.load_device).to(target_device)
 
                             self.mmap_released = True
-                            logging.info("MultiGPU: GGUFDisTorch - self.mmap_released = True")
-
 
         module.GGUFModelPatcher.load = new_load
         module.GGUFModelPatcher._patched = True
-        logging.info("MultiGPU: GGUFDisTorch - Successfully patched GGUF ModelPatcher")
-    else:
-        logging.info("MultiGPU: GGUFDisTorch - GGUF ModelPatcher already patched")
 
-def analyze_ggml_loading(model, distorch_allocations): # Removed node_instance parameter
+def analyze_ggml_loading(model, distorch_allocations):
 
     DEVICE_RATIOS_DISTORCH = {}
     device_table = {}
@@ -216,7 +190,7 @@ def analyze_ggml_loading(model, distorch_allocations): # Removed node_instance p
 
 
 def override_class_with_distorch(cls):
-    from . import register_patched_ggufmodelpatcher # Removed node_instance import
+    from . import register_patched_ggufmodelpatcher
     from . import get_device_list
     import copy
     import logging
@@ -224,7 +198,6 @@ def override_class_with_distorch(cls):
     class NodeOverrideDisTorch(cls):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            # self.distorch_allocations = {} # No longer needed here
             self.distorch_compute_device = None
 
         @classmethod
@@ -252,7 +225,6 @@ def override_class_with_distorch(cls):
         def override(self, *args, **kwargs):
             global current_device, model_allocation_store
 
-            # self.distorch_allocations = {} # No longer needed here
             distorch_compute_device = kwargs.get("compute_device", None)
             if distorch_compute_device is not None:
                 current_device = distorch_compute_device
@@ -264,8 +236,6 @@ def override_class_with_distorch(cls):
             for key in keys_to_remove:
                 if key not in {"unet_name", "clip_name1", "clip_name2", "clip_name2", "type"}:
                     value = kwargs.pop(key)
-                    logging.info(f"MultiGPU: Removing {key} from kwargs")
-                    logging.info(f"MultiGPU: Value: {value}")
                     allocation_params[key] = value
 
             fn = getattr(super(), cls.FUNCTION)
@@ -274,11 +244,9 @@ def override_class_with_distorch(cls):
             if hasattr(model[0], 'model'):
                 model_hash = create_model_hash(model[0], "override")
                 model_allocation_store[model_hash] = allocation_params.copy()
-                logging.info(f"MultiGPU: STORE - Hash {model_hash}, Allocations: {model_allocation_store[model_hash]}")
             elif hasattr(model[0], 'patcher') and hasattr(model[0].patcher, 'model'):
                 model_hash = create_model_hash(model[0].patcher, "override")
                 model_allocation_store[model_hash] = allocation_params.copy()
-                logging.info(f"MultiGPU: STORE - Hash {model_hash}, Allocations: {model_allocation_store[model_hash]}")
             return model
 
     return NodeOverrideDisTorch
