@@ -1042,7 +1042,7 @@ if check_module_exists("PuLID_ComfyUI") or check_module_exists("pulid_comfyui"):
     register_PulidModelLoader()
     register_PulidInsightFaceLoader()
     register_PulidEvaClipLoader()
-if check_module_exists("ComfyUI-HunyuanVideoWrapper") or check_module_exists("comfyui-hunyyuanvideowrapper"):
+if check_module_exists("ComfyUI-HunyuanVideoWrapper") or check_module_exists("comfyui-hunyuanvideowrapper"):
     register_HyVideoModelLoader()
     register_HyVideoVAELoader()
     register_DownloadAndLoadHyVideoTextEncoder()
