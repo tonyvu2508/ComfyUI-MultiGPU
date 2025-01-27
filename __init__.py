@@ -334,7 +334,7 @@ def override_class_with_distorch(cls):
             default_device = devices[1] if len(devices) > 1 else devices[0]
             inputs["optional"] = inputs.get("optional", {})
             inputs["optional"]["device"] = (devices, {"default": default_device})
-            inputs["optional"]["allocations"] = ("STRING", {"multiline": True, "default": "{}"})
+            inputs["optional"]["allocations"] = ("STRING", {"multiline": False, "default": "{cuda:0,0.15;cpu,0.5}"})
             return inputs
 
         CATEGORY = "multigpu"
@@ -1022,29 +1022,30 @@ def register_DownloadAndLoadHyVideoTextEncoder():
 
 # Register desired nodes
 register_module(["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
-if check_module_exists("ComfyUI-LTXVideo"):
+if check_module_exists("ComfyUI-LTXVideo") or check_module_exists("comfyui-ltxvideo"):
     register_LTXVLoaderMultiGPU()
-if check_module_exists("ComfyUI-Florence2"):
+if check_module_exists("ComfyUI-Florence2") or check_module_exists("comfyui-florence2"):
     register_Florence2ModelLoaderMultiGPU()
     register_DownloadAndLoadFlorence2ModelMultiGPU()
-if check_module_exists("ComfyUI_bitsandbytes_NF4"):
+if check_module_exists("ComfyUI_bitsandbytes_NF4") or check_module_exists("comfyui_bitsandbytes_nf4"):
     register_CheckpointLoaderNF4()
-if check_module_exists("x-flux-comfyui"):
+if check_module_exists("x-flux-comfyui") or check_module_exists("x-flux-comfyui"):
     register_LoadFluxControlNetMultiGPU()
-if check_module_exists("ComfyUI-MMAudio"):
+if check_module_exists("ComfyUI-MMAudio") or check_module_exists("comfyui-mmaudio"):
     register_MMAudioModelLoaderMultiGPU()
     register_MMAudioFeatureUtilsLoaderMultiGPU()
     register_MMAudioSamplerMultiGPU()
-if check_module_exists("ComfyUI-GGUF"):
+if check_module_exists("ComfyUI-GGUF") or check_module_exists("comfyui-gguf"):
     register_UnetLoaderGGUFMultiGPU()
     register_CLIPLoaderGGUFMultiGPU()
-if check_module_exists("PuLID_ComfyUI"):
+if check_module_exists("PuLID_ComfyUI") or check_module_exists("pulid_comfyui"):
     register_PulidModelLoader()
     register_PulidInsightFaceLoader()
     register_PulidEvaClipLoader()
-if check_module_exists("ComfyUI-HunyuanVideoWrapper"):
+if check_module_exists("ComfyUI-HunyuanVideoWrapper") or check_module_exists("comfyui-hunyyuanvideowrapper"):
     register_HyVideoModelLoader()
     register_HyVideoVAELoader()
     register_DownloadAndLoadHyVideoTextEncoder()
+
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
