@@ -1,10 +1,16 @@
 # ComfyUI-MultiGPU
 
-## Advanced user nodes for using multiple GPUs as well as offloading model components to the CPU in a single ComfyUI workflow
+## Device selection and model offloading tools for ComfyUI workloads that exceed single GPU capacity
 
-This extension adds device selection capabilities to model loading nodes in ComfyUI. It monkey patches the memory management of ComfyUI in a hacky way and is neither a comprehensive solution is nor is it well-tested on any edge-case CUDA/CPU solutions. **Use at your own risk.**
+This extension empowers users to spread model components across multiple GPUs or offload to CPU in a single ComfyUI workflow. Aimed at complex workloads that would normally require sequential model loading/unloading:
 
-*Note: This does not add parallelism. The workflow steps are still executed sequentially just with model components loaded on different GPUs or offloaded to the CPU where allowed. Any potential speedup comes from not having to constantly load and unload models from VRAM.*
+- Full control over model placement
+- Support for all major model loader nodes
+- NEW! Hunyuan Video UNet model splitting across two devices using DiffSynth block-swapping
+
+*EXPERIMENTAL: This extension modifies ComfyUI's memory management behavior. While functional for standard GPU and CPU configurations, edge cases may exist. Use at your own risk.*
+
+**Note:** This enhances memory management, not parallelism. Workflow steps execute sequentially but with components loaded across your specified devices. Performance gains come from avoiding repeated model loading/unloading when VRAM is constrained.
 
 # NEW: DisTorch - Advanced GGUF-Quantized Model Layer Distribution
 
