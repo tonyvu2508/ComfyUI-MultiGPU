@@ -6,6 +6,16 @@ This extension adds device selection capabilities to model loading nodes in Comf
 
 *Note: This does not add parallelism. The workflow steps are still executed sequentially just with model components loaded on different GPUs or offloaded to the CPU where allowed. Any potential speedup comes from not having to constantly load and unload models from VRAM.*
 
+# NEW: DisTorch - Advanced GGUF-Quantized Model Layer Distribution
+
+DisTorch nodes are now available, allowing fine-grained control over model layer distribution across multiple devices for GGUF quantized models. Using a simple allocation string (e.g., "cuda:0,0.025;cuda:1,0.05;cpu,0.10"), you can precisely specify how much memory each device should contribute to hosting model layers. This enables sophisticated memory management strategies like:
+
+- Splitting large models across multiple GPUs with different VRAM capacities
+- Utilizing CPU memory alongside GPU VRAM for handling memory-intensive models
+- Optimizing layer placement based on your specific hardware configuration
+
+Check out the updated examples `hunyuan_gguf_distorch.json` and `flux1dev_gguf_distorch.json` to see DisTorch in action, demonstrating advanced layer distribution across multiple devices.
+
 ## Installation
 
 Installation via [ComfyUI-Manager](https://github.com/ltdrdata/ComfyUI-Manager) is preferred. Simply search for `ComfyUI-MultiGPU` in the list of nodes and follow installation instructions.
@@ -56,6 +66,14 @@ All MultiGPU nodes available for your install can be found in the "multigpu" cat
 ## Example workflows
 
 All workflows have been tested on a 2x 3090 linux setup, a 4070 win 11 setup, and a 3090/1070ti linux setup.
+
+### Split GGUF-quantized UNet and CLIP models across multiple devices using DisTorch
+
+- [examples/hunyuan_gguf_distorch.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/hunyuan_gguf_distorch.json)
+This workflow attaches a HunyuanVideo GGUF-quantized model on `cuda:0` for compute and distrubutes its UNet across itself, a secondary CUDA device, and the system's main memory (`cpu`) using a new DisTorch distributed-load methodology. The text encoder now attaches itself to `cuda:1` and splits iteself between `cuda:1` amd `cpu` layers. While the VAE is loaded on GPU 1 directly and use `cuda:1` for compute.
+
+- [examples/flux1dev_gguf_distorch.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_gguf_distorch.json)
+This workflow loads a FLUX.1-dev model on `cuda:0` for compute and distrubutes its UNet across multiple CUDA devices using new DisTorch distributed-load methodology. While the text encoders and VAE are loaded on GPU 1 and use `cuda:1` for compute.
 
 ### Split Hunyuan Video UNet across two devices and use DiffSynth Just-in-Time loading
 

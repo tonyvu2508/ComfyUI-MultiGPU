@@ -55,7 +55,7 @@
         58
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -209,7 +209,7 @@
         109.8011474609375
       ],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -402,81 +402,6 @@
       "bgcolor": "#3f5159"
     },
     {
-      "id": 88,
-      "type": "UnetLoaderGGUFDisTorchMultiGPU",
-      "pos": [
-        2622.552734375,
-        -105.02156829833984
-      ],
-      "size": [
-        358.005859375,
-        128.5614013671875
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            141,
-            142
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "UnetLoaderGGUFDisTorchMultiGPU"
-      },
-      "widgets_values": [
-        "hunyuan-video-t2v-720p-Q3_K_S.gguf",
-        "cuda:0",
-        "cuda:0,0.025;cuda:1,0.05;cpu,0.10"
-      ],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
-      "id": 100,
-      "type": "DualCLIPLoaderGGUFDisTorchMultiGPU",
-      "pos": [
-        2623.7119140625,
-        64.39619445800781
-      ],
-      "size": [
-        348.5331726074219,
-        154
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": [
-            154
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DualCLIPLoaderGGUFDisTorchMultiGPU"
-      },
-      "widgets_values": [
-        "clip_l.safetensors",
-        "llava-llama-3-8B-v1_1-Q4_K_M.gguf",
-        "hunyuan_video",
-        "cuda:1",
-        "cuda:0,0.025;cuda:1,0.05;cpu,0.10"
-      ],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
       "id": 70,
       "type": "VHS_VideoCombine",
       "pos": [
@@ -485,7 +410,7 @@
       ],
       "size": [
         338.94024658203125,
-        903.6536865234375
+        902.6787109375
       ],
       "flags": {},
       "order": 15,
@@ -540,13 +465,13 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "HunyuanVideo_00314.mp4",
+            "filename": "HunyuanVideo_00315.mp4",
             "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 24,
-            "workflow": "HunyuanVideo_00314.png",
-            "fullpath": "/home/johnj/ComfyUI/output/HunyuanVideo_00314.mp4"
+            "workflow": "HunyuanVideo_00315.png",
+            "fullpath": "/home/johnj/ComfyUI/output/HunyuanVideo_00315.mp4"
           },
           "muted": false
         }
@@ -610,7 +535,7 @@
         528.065185546875
       ],
       "flags": {},
-      "order": 7,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -634,7 +559,7 @@
         164.31304931640625
       ],
       "flags": {},
-      "order": 10,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -662,6 +587,81 @@
       ],
       "color": "#232",
       "bgcolor": "#353"
+    },
+    {
+      "id": 100,
+      "type": "DualCLIPLoaderGGUFDisTorchMultiGPU",
+      "pos": [
+        2623.7119140625,
+        64.39619445800781
+      ],
+      "size": [
+        348.5331726074219,
+        154
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            154
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DualCLIPLoaderGGUFDisTorchMultiGPU"
+      },
+      "widgets_values": [
+        "clip_l.safetensors",
+        "llava-llama-3-8B-v1_1-Q4_K_M.gguf",
+        "hunyuan_video",
+        "cuda:1",
+        "cuda:1,0.33;cpu,0.15"
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 88,
+      "type": "UnetLoaderGGUFDisTorchMultiGPU",
+      "pos": [
+        2622.552734375,
+        -105.02156829833984
+      ],
+      "size": [
+        358.005859375,
+        128.5614013671875
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            141,
+            142
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UnetLoaderGGUFDisTorchMultiGPU"
+      },
+      "widgets_values": [
+        "flux1-dev-Q8_0.gguf",
+        "cuda:0",
+        "cuda:0,0.33;cuda:1,0.33;cpu,0.0825"
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
     }
   ],
   "links": [
@@ -796,10 +796,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.797202450000122,
+      "scale": 1.283902517749697,
       "offset": [
-        -1830.6457542655762,
-        790.7863966854694
+        -2107.057728768135,
+        344.093734201536
       ]
     },
     "ue_links": [],
