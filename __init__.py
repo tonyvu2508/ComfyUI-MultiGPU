@@ -280,7 +280,7 @@ class HunyuanVideoEmbeddingsAdapter:
     
     RETURN_TYPES = ("CONDITIONING",)
     FUNCTION = "adapt_embeddings"
-    CATEGORY = "conditioning/hunyuan_video"
+    CATEGORY = "multigpu"
 
     def adapt_embeddings(self, hyvid_embeds):
         # Create main conditioning tensor
@@ -371,7 +371,7 @@ def override_class_with_distorch(cls):
             default_device = devices[1] if len(devices) > 1 else devices[0]
             inputs["optional"] = inputs.get("optional", {})
             inputs["optional"]["device"] = (devices, {"default": default_device})
-            inputs["optional"]["allocations"] = ("STRING", {"multiline": False, "default": "{cuda:0,0.15;cpu,0.5}"})
+            inputs["optional"]["allocations"] = ("STRING", {"multiline": False, "default": "cuda:0,0.15;cpu,0.5"})
             return inputs
 
         CATEGORY = "multigpu"
