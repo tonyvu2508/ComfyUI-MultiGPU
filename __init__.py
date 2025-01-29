@@ -269,6 +269,43 @@ class DeviceSelectorMultiGPU:
     def select_device(self, device):
         return (device,)
 
+class HunyuanVideoEmbeddingsAdapter:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "hyvid_embeds": ("HYVIDEMBEDS",),
+            }
+        }
+    
+    RETURN_TYPES = ("CONDITIONING",)
+    FUNCTION = "adapt_embeddings"
+    CATEGORY = "conditioning/hunyuan_video"
+
+    def adapt_embeddings(self, hyvid_embeds):
+        # Create main conditioning tensor
+        cond = hyvid_embeds["prompt_embeds"]
+        
+        # Create pooled dict with all our extra information
+        pooled_dict = {
+            "pooled_output": hyvid_embeds["prompt_embeds_2"],
+            "cross_attn": hyvid_embeds["prompt_embeds"],
+            "attention_mask": hyvid_embeds["attention_mask"],
+        }
+        
+        # Add CLIP's attention mask if present
+        if hyvid_embeds["attention_mask_2"] is not None:
+            pooled_dict["attention_mask_controlnet"] = hyvid_embeds["attention_mask_2"]
+
+        # Add guidance if present - typically these and negative_xxxx are empty for HunyuanVideo
+        if hyvid_embeds["cfg"] is not None:
+            pooled_dict["guidance"] = float(hyvid_embeds["cfg"])
+            pooled_dict["start_percent"] = float(hyvid_embeds["start_percent"]) if hyvid_embeds["start_percent"] is not None else 0.0
+            pooled_dict["end_percent"] = float(hyvid_embeds["end_percent"]) if hyvid_embeds["end_percent"] is not None else 1.0
+
+        # Finally create the conditioning list in the exact format that encode_from_tokens_scheduled returns
+        return ([[cond, pooled_dict]],)
+
 def override_class(cls):
     class NodeOverride(cls):
         @classmethod
@@ -366,7 +403,10 @@ def override_class_with_distorch(cls):
     return NodeOverrideDisTorch
 
 
-NODE_CLASS_MAPPINGS = {"DeviceSelectorMultiGPU": DeviceSelectorMultiGPU}
+NODE_CLASS_MAPPINGS = {
+    "DeviceSelectorMultiGPU": DeviceSelectorMultiGPU,
+    "HunyuanVideoEmbeddingsAdapter": HunyuanVideoEmbeddingsAdapter,
+}
 
 def check_module_exists(module_path):
     full_path = os.path.join(folder_paths.get_folder_paths("custom_nodes")[0], module_path)
