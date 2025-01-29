@@ -369,7 +369,7 @@ def override_class_with_distorch(cls):
 NODE_CLASS_MAPPINGS = {"DeviceSelectorMultiGPU": DeviceSelectorMultiGPU}
 
 def check_module_exists(module_path):
-    full_path = os.path.join("custom_nodes", module_path)
+    full_path = os.path.join(folder_paths.get_folder_paths("custom_nodes")[0], module_path)
     logging.info(f"MultiGPU: Checking for module at {full_path}")
 
     if not os.path.exists(full_path):
