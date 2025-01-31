@@ -219,34 +219,6 @@ def analyze_ggml_loading(model, allocations_str):
     return {"device_assignments": device_assignments}
 
 
-
-
-
-def log_comfy_states(label=""):
-
-    global current_device
-    global current_offload_device
-
-    logger=logging.getLogger(__name__)
-    main_dev=mm.get_torch_device()
-    if torch.device(current_device) != main_dev:
-        logging.info(f"MultiGPU: get_torch_device() {main_dev} = current_device {current_device}: False")
-
-    unet_dev=mm.unet_offload_device()
-    if (unet_dev != current_offload_device):
-        logging.info(f"MultiGPU: unet_offload_device() {unet_dev} = current_offload_device {current_offload_device}: False")
-
-    textenc_dev=mm.text_encoder_device()
-    if torch.device(current_device) != textenc_dev:
-        logging.info(f"MultiGPU: text_encoder_device() {textenc_dev} = current_device {current_device}: False")
-
-
-    textenc_off_dev=mm.text_encoder_offload_device()
-    if (textenc_off_dev != current_offload_device):
-        logging.info(f"MultiGPU: text_encoder_offload_device() {textenc_off_dev} = current_offload_device {current_offload_device}: False")
-
-
-
 def get_device_list():
     import torch
     return ["cpu"] + [f"cuda:{i}" for i in range(torch.cuda.device_count())]
@@ -322,14 +294,10 @@ def override_class(cls):
 
         def override(self, *args, device=None, **kwargs):
             global current_device
-            log_comfy_states(label=f"{cls.__name__}_override_pre")
             if device is not None:
                 current_device = device
-                log_comfy_states(label=f"{cls.__name__}_override_device_set_{device}")
-            log_comfy_states(label=f"{cls.__name__}_override_post")
             fn = getattr(super(), cls.FUNCTION)
             out = fn(*args, **kwargs)
-            log_comfy_states(label=f"{cls.__name__}_override_post_fn_call")
             return out
 
     return NodeOverride
@@ -379,17 +347,12 @@ def override_class_with_distorch(cls):
 
         def override(self, *args, device=None, allocations=None, **kwargs):
             global current_device
-            log_comfy_states(label=f"{cls.__name__}_override_pre")
             if device is not None:
                 current_device = device
-                log_comfy_states(label=f"{cls.__name__}_override_device_set_{device}")
-            log_comfy_states(label=f"{cls.__name__}_override_post")
-
+                
             register_patched_ggufmodelpatcher()
-
             fn = getattr(super(), cls.FUNCTION)
             out = fn(*args, **kwargs)
-            log_comfy_states(label=f"{cls.__name__}_override_post_fn_call")
 
             if hasattr(out[0], 'model'):
                 model_hash = create_model_hash(out[0], "override")
