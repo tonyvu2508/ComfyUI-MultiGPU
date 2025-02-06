@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-multigpu"
 description = "This extension adds CUDA/CPU device selection to supported loader nodes in ComfyUI. Using these nodes, each model component (like UNet, Clip, or VAE) can be loaded on a specific GPU and GGUF UNet/CLIPs can be layer-split for storage across non-compute devices using DisTorch. Examples included are multi-GPU workflows for SDXL, FLUX, LTXVideo, and Hunyuan Video for both standard and GGUF loader nodes."
-version = "1.4.3"
+version = "1.5.0"
 license = {file = "LICENSE"}
 
 [project.urls]

@@ -11,7 +11,6 @@ from collections import defaultdict
 import hashlib
 
 current_device = mm.get_torch_device()
-current_offload_device = mm.get_torch_device()
 model_allocation_store = {}
 
 def get_torch_device_patched():
@@ -22,35 +21,7 @@ def get_torch_device_patched():
         device = torch.device(current_device)
     return device
 
-def text_encoder_device_patched():
-    device = None
-    if (not torch.cuda.is_available() or mm.cpu_state == mm.CPUState.CPU or "cpu" in str(current_device).lower()):
-        device = torch.device("cpu")
-    else:
-        device = torch.device(current_device)
-    return device
-
-def unet_offload_device_patched():
-    device = None
-    if (not torch.cuda.is_available() or mm.cpu_state == mm.CPUState.CPU or "cpu" in str(current_offload_device).lower()):
-        device = torch.device("cpu")
-    else:
-        device = torch.device(current_offload_device)
-    return device
-
-def text_encoder_offload_device_patched():
-    device = None
-    if (not torch.cuda.is_available() or mm.cpu_state == mm.CPUState.CPU or "cpu" in str(current_offload_device).lower()):
-        device = torch.device("cpu")
-    else:
-        device = torch.device(current_offload_device)
-    return device
-
 mm.get_torch_device = get_torch_device_patched
-mm.unet_offload_device = unet_offload_device_patched
-mm.text_encoder_device = text_encoder_device_patched
-mm.text_encoder_offload_device = text_encoder_offload_device_patched
-
 
 def create_model_hash(model, caller):
 
@@ -301,34 +272,6 @@ def override_class(cls):
             return out
 
     return NodeOverride
-
-def override_class_with_offload(cls):
-    class NodeOverrideDiffSynth(cls):
-        @classmethod
-        def INPUT_TYPES(s):
-            inputs = copy.deepcopy(cls.INPUT_TYPES())
-            devices = get_device_list()
-            default_device = devices[1] if len(devices) > 1 else devices[0]
-            inputs["optional"] = inputs.get("optional", {})
-            inputs["optional"]["device"] = (devices, {"default": default_device})
-            inputs["optional"]["offload_device"] = (devices, {"default": "cpu"})
-            return inputs
-
-        CATEGORY = "multigpu"
-        FUNCTION = "override"
-
-        def override(self, *args, device=None, offload_device=None, **kwargs):
-            global current_device
-            global current_offload_device
-            if device is not None:
-                current_device = device
-            if offload_device is not None:
-                current_offload_device = offload_device
-            fn = getattr(super(), cls.FUNCTION)
-            return fn(*args, **kwargs)
-
-    return NodeOverrideDiffSynth
-
 
 def override_class_with_distorch(cls):
     class NodeOverrideDisTorch(cls):
@@ -911,46 +854,7 @@ def register_HyVideoModelLoader():
             original_loader = NODE_CLASS_MAPPINGS["HyVideoModelLoader"]()
             return original_loader.loadmodel(model, base_precision, load_device, quantization, compile_args, attention_mode, block_swap_args, lora, auto_cpu_offload)
 
-    # Add new DiffSynth-style node
-    class HyVideoModelLoaderDiffSynth:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "model": (folder_paths.get_filename_list("diffusion_models"), {"tooltip": "These models are loaded from the 'ComfyUI/models/diffusion_models' -folder",}),
-                    "base_precision": (["fp32", "bf16"], {"default": "bf16"}),
-                    "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'fp8_scaled', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6", "torchao_int4", "torchao_int8"],
-                                   {"default": 'disabled', "tooltip": "optional quantization method"}),
-                },
-                "optional": {
-                    "attention_mode": ([
-                        "sdpa",
-                        "flash_attn_varlen",
-                        "sageattn_varlen",
-                        "comfy",
-                    ], {"default": "flash_attn"}),
-                    "compile_args": ("COMPILEARGS", ),
-                    "block_swap_args": ("BLOCKSWAPARGS", ),
-                    "lora": ("HYVIDLORA", {"default": None}),
-                }
-            }
-
-        RETURN_TYPES = ("HYVIDEOMODEL",)
-        RETURN_NAMES = ("model", )
-        FUNCTION = "loadmodel"
-        CATEGORY = "HunyuanVideoWrapper"
-
-        def loadmodel(self, model, base_precision, quantization, compile_args=None, attention_mode="sdpa", block_swap_args=None, lora=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["HyVideoModelLoader"]()
-            # Use DiffSynth's auto offloading approach
-            return original_loader.loadmodel(model, base_precision, "main_device", quantization,
-                                          compile_args, attention_mode, block_swap_args, lora,
-                                          auto_cpu_offload=True)
-
-    # Register both with MultiGPU wrapper
     NODE_CLASS_MAPPINGS["HyVideoModelLoaderMultiGPU"] = override_class(HyVideoModelLoader)
-    NODE_CLASS_MAPPINGS["HyVideoModelLoaderDiffSynthMultiGPU"] = override_class_with_offload(HyVideoModelLoaderDiffSynth)
 
     logging.info(f"MultiGPU: Registered HyVideoModelLoader nodes")
 
