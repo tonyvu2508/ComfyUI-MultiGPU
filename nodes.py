@@ -1,6 +1,7 @@
 import os
 import torch
 import folder_paths
+from pathlib import Path
 from nodes import NODE_CLASS_MAPPINGS
 
 class UnetLoaderGGUF:
@@ -152,14 +153,18 @@ class Florence2ModelLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
-            "model": ([item.name for item in Path(folder_paths.models_dir, "LLM").iterdir() if item.is_dir()],
-                        {"tooltip": "models are expected to be in Comfyui/models/LLM folder"}),
+            "model": ([item.name for item in Path(folder_paths.models_dir, "LLM").iterdir() if item.is_dir()], {"tooltip": "models are expected to be in Comfyui/models/LLM folder"}),
             "precision": (['fp16','bf16','fp32'],),
-            "attention": (['flash_attention_2', 'sdpa', 'eager'], {"default": 'sdpa'}),
-        },
-        "optional": {
-            "lora": ("PEFTLORA",),
-        }}
+            "attention": (
+                    [ 'flash_attention_2', 'sdpa', 'eager'],
+                    {
+                    "default": 'sdpa'
+                    }),
+            },
+            "optional": {
+                "lora": ("PEFTLORA",),
+            }
+        }
 
     RETURN_TYPES = ("FL2MODEL",)
     RETURN_NAMES = ("florence2_model",)
@@ -175,27 +180,39 @@ class DownloadAndLoadFlorence2Model:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
-            "model": ([
-                'microsoft/Florence-2-base',
-                'microsoft/Florence-2-base-ft',
-                'microsoft/Florence-2-large',
-                'microsoft/Florence-2-large-ft',
-                'HuggingFaceM4/Florence-2-DocVQA',
-                'thwri/CogFlorence-2.1-Large',
-                'thwri/CogFlorence-2.2-Large',
-                'gokaygokay/Florence-2-SD3-Captioner',
-                'gokaygokay/Florence-2-Flux-Large',
-                'MiaoshouAI/Florence-2-base-PromptGen-v1.5',
-                'MiaoshouAI/Florence-2-large-PromptGen-v1.5',
-                'MiaoshouAI/Florence-2-base-PromptGen-v2.0',
-                'MiaoshouAI/Florence-2-large-PromptGen-v2.0'
-            ], {"default": 'microsoft/Florence-2-base'}),
-            "precision": (['fp16','bf16','fp32'], {"default": 'fp16'}),
-            "attention": (['flash_attention_2', 'sdpa', 'eager'], {"default": 'sdpa'}),
-        },
-        "optional": {
-            "lora": ("PEFTLORA",),
-        }}
+            "model": (
+                    [ 
+                    'microsoft/Florence-2-base',
+                    'microsoft/Florence-2-base-ft',
+                    'microsoft/Florence-2-large',
+                    'microsoft/Florence-2-large-ft',
+                    'HuggingFaceM4/Florence-2-DocVQA',
+                    'thwri/CogFlorence-2.1-Large',
+                    'thwri/CogFlorence-2.2-Large',
+                    'gokaygokay/Florence-2-SD3-Captioner',
+                    'gokaygokay/Florence-2-Flux-Large',
+                    'MiaoshouAI/Florence-2-base-PromptGen-v1.5',
+                    'MiaoshouAI/Florence-2-large-PromptGen-v1.5',
+                    'MiaoshouAI/Florence-2-base-PromptGen-v2.0',
+                    'MiaoshouAI/Florence-2-large-PromptGen-v2.0'
+                    ],
+                    {
+                    "default": 'microsoft/Florence-2-base'
+                    }),
+            "precision": ([ 'fp16','bf16','fp32'],
+                    {
+                    "default": 'fp16'
+                    }),
+            "attention": (
+                    [ 'flash_attention_2', 'sdpa', 'eager'],
+                    {
+                    "default": 'sdpa'
+                    }),
+            },
+            "optional": {
+                "lora": ("PEFTLORA",),
+            }
+        }
 
     RETURN_TYPES = ("FL2MODEL",)
     RETURN_NAMES = ("florence2_model",)
@@ -402,43 +419,6 @@ class HyVideoModelLoader:
         from nodes import NODE_CLASS_MAPPINGS
         original_loader = NODE_CLASS_MAPPINGS["HyVideoModelLoader"]()
         return original_loader.loadmodel(model, base_precision, load_device, quantization, compile_args, attention_mode, block_swap_args, lora, auto_cpu_offload)
-
-# Add new DiffSynth-style node
-class HyVideoModelLoaderDiffSynth:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "model": (folder_paths.get_filename_list("diffusion_models"), {"tooltip": "These models are loaded from the 'ComfyUI/models/diffusion_models' -folder",}),
-                "base_precision": (["fp32", "bf16"], {"default": "bf16"}),
-                "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'fp8_scaled', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6", "torchao_int4", "torchao_int8"],
-                                {"default": 'disabled', "tooltip": "optional quantization method"}),
-            },
-            "optional": {
-                "attention_mode": ([
-                    "sdpa",
-                    "flash_attn_varlen",
-                    "sageattn_varlen",
-                    "comfy",
-                ], {"default": "flash_attn"}),
-                "compile_args": ("COMPILEARGS", ),
-                "block_swap_args": ("BLOCKSWAPARGS", ),
-                "lora": ("HYVIDLORA", {"default": None}),
-            }
-        }
-
-    RETURN_TYPES = ("HYVIDEOMODEL",)
-    RETURN_NAMES = ("model", )
-    FUNCTION = "loadmodel"
-    CATEGORY = "HunyuanVideoWrapper"
-
-    def loadmodel(self, model, base_precision, quantization, compile_args=None, attention_mode="sdpa", block_swap_args=None, lora=None):
-        from nodes import NODE_CLASS_MAPPINGS
-        original_loader = NODE_CLASS_MAPPINGS["HyVideoModelLoader"]()
-        # Use DiffSynth's auto offloading approach
-        return original_loader.loadmodel(model, base_precision, "main_device", quantization,
-                                        compile_args, attention_mode, block_swap_args, lora,
-                                        auto_cpu_offload=True)
 
 class HyVideoVAELoader:
     @classmethod
