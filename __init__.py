@@ -111,8 +111,6 @@ def analyze_ggml_loading(model, allocations_str):
     dash_line = "-" * 47
     fmt_assign = "{:<12}{:>10}{:>14}{:>10}"
 
-    logging.info(dash_line)
-
     for allocation in distorch_alloc.split(';'):
         dev_name, fraction = allocation.split(',')
         fraction = float(fraction)
@@ -127,11 +125,8 @@ def analyze_ggml_loading(model, allocations_str):
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(eq_line)
-    logging.info("               DisTorch Analysis")
-    logging.info(eq_line)
-    logging.info(dash_line)
     logging.info("          DisTorch Device Allocations")
-    logging.info(dash_line)
+    logging.info(eq_line)
     logging.info(fmt_assign.format("Device", "Alloc %", "Total (GB)", " Alloc (GB)"))
     logging.info(dash_line)
 
@@ -230,12 +225,9 @@ def calculate_vvram_allocation_string(model, virtual_vram_str):
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(eq_line)
-    logging.info("               DisTorch Analysis")
+    logging.info("          DisTorch Virtual VRAM Analysis")
     logging.info(eq_line)
-    logging.info(dash_line)
-    logging.info("          DisTorch View VRAM Analysis")
-    logging.info(dash_line)
-    logging.info(fmt_assign.format("Object", "Role", "Original(GB)", "Total(GB)", "Virtual(GB)"))
+    logging.info(fmt_assign.format("Object", "Role", "Original(GB)", "Total(GB)", "Virt(GB)"))
     logging.info(dash_line)
 
     recipient_vram = mm.get_total_memory(torch.device(recipient_device)) / (1024**3)
@@ -282,14 +274,17 @@ def calculate_vvram_allocation_string(model, virtual_vram_str):
 
     model_size_gb = total_memory / (1024**3)
 
-    new_model_size_gb = model_size_gb - virtual_vram_gb
+    if model_size_gb-virtual_vram_gb<0:
+        new_model_size_gb = 0
+    else:
+        new_model_size_gb = model_size_gb - virtual_vram_gb
 
-    logging.info(fmt_assign.format('model', 'model', f"     {model_size_gb:.2f}GB", f"   {new_model_size_gb:.2f}GB", f" -{virtual_vram_gb:.2f}GB"))
+    logging.info(fmt_assign.format('model', 'model', f"    {model_size_gb:.2f}GB", f"  {new_model_size_gb:.2f}GB", f"  -{virtual_vram_gb:.2f}GB"))
 
     if model_size_gb > (recipient_vram*0.9):
         on_recipient = recipient_vram*0.9
         on_virtuals = model_size_gb - on_recipient
-        logging.info("Warning: Model size is greater than 90% of recipient VRAM.", on_virtuals, "GB of GGML Layers Offloaded Automatically to Virtual VRAM.")
+        logging.info(f"\nWarning: Model size is greater than 90% of recipient VRAM. {on_virtuals:.2f} GB of GGML Layers Offloaded Automatically to Virtual VRAM.\n")
     else:
         on_recipient = model_size_gb
         on_virtuals = 0
@@ -310,10 +305,8 @@ def calculate_vvram_allocation_string(model, virtual_vram_str):
         allocation_parts.append(f"cpu,{cpu_percent:.4f}")
 
     allocation_string = ";".join(allocation_parts)
-    logging.info(dash_line)
     fmt_mem = "{:<20}{:>20}"
-    logging.info(fmt_mem.format("Allocation String", allocation_string))
-    logging.info(dash_line)
+    logging.info(fmt_mem.format("\nAllocation String", allocation_string))
 
     return allocation_string
 
@@ -540,13 +533,18 @@ def override_class_with_distorch(cls):
             inputs["optional"] = inputs.get("optional", {})
             inputs["optional"]["device"] = (devices, {"default": default_device})
             inputs["optional"]["virtual_vram_gb"] = ("FLOAT", {"default": 0.0, "min": 4.0, "max": 24.0, "step": 0.1})
-            inputs["optional"]["allocations"] = ("STRING", {"multiline": False, "default": ""})
+            inputs["optional"]["use_other_vram"] = ("BOOLEAN", {"default": False})
+            inputs["optional"]["expert_mode_allocations"] = ("STRING", {
+                "multiline": False, 
+                "default": "",
+                "tooltip": "Expert use only: Manual VRAM allocation string. Incorrect values can cause crashes. Do not modify unless you fully understand DisTorch memory management."
+            })
             return inputs
 
         CATEGORY = "multigpu"
         FUNCTION = "override"
 
-        def override(self, *args, device=None, allocations=None, virtual_vram_gb=0.0, **kwargs):
+        def override(self, *args, device=None, expert_mode_allocations=None, use_other_vram=None, virtual_vram_gb=0.0, **kwargs):
             global current_device
             if device is not None:
                 current_device = device
@@ -556,7 +554,7 @@ def override_class_with_distorch(cls):
             out = fn(*args, **kwargs)
 
             vram_string = f"{device};{virtual_vram_gb};cpu" if virtual_vram_gb > 0 else ""
-            full_allocation = f"{allocations}#{vram_string}" if allocations or vram_string else ""
+            full_allocation = f"{expert_mode_allocations}#{vram_string}" if expert_mode_allocations or vram_string else ""
             
             logging.info(f"[DisTorch] Full allocation string: {full_allocation}")
             
