@@ -533,7 +533,7 @@ def override_class_with_distorch(cls):
             default_device = devices[1] if len(devices) > 1 else devices[0]
             inputs["optional"] = inputs.get("optional", {})
             inputs["optional"]["device"] = (devices, {"default": default_device})
-            inputs["optional"]["virtual_vram_gb"] = ("FLOAT", {"default": 0.0, "min": 4.0, "max": 24.0, "step": 0.1})
+            inputs["optional"]["virtual_vram_gb"] = ("FLOAT", {"default": 4.0, "min": 0.0, "max": 24.0, "step": 0.1})
             inputs["optional"]["use_other_vram"] = ("BOOLEAN", {"default": False})
             inputs["optional"]["expert_mode_allocations"] = ("STRING", {
                 "multiline": False, 
