@@ -6,7 +6,6 @@
   <em>Add Virtual VRAM and unleash the power of all of your latent space</em>
 </p>
 
-
 ## Device selection and model offloading tools for ComfyUI workloads that exceed single GPU capacity
 
 This extension empowers users to spread model components across multiple GPUs or offload to CPU in a single ComfyUI workflow. Aimed at complex workloads that would normally require sequential model loading/unloading:
@@ -26,8 +25,6 @@ This extension empowers users to spread model components across multiple GPUs or
   <br>
   <em>DisTorch 2.0 in Action</em>
 </p>
-
-
 
 ## What's New?
 DisTorch now features simple Virtual VRAM control that lets you offload model layers from your GPU with zero configuration. Just set how much VRAM you want to free up, and DisTorch handles the rest.
