@@ -104,8 +104,8 @@ def analyze_ggml_loading(model, allocations_str):
 
     if '#' in allocations_str:
         distorch_alloc, virtual_vram_str = allocations_str.split('#')
-        virtual_vram_gb = float(virtual_vram_str.split(';')[1])
-        distorch_alloc = calculate_vvram_allocation_string(model, virtual_vram_str)
+        if not distorch_alloc:
+            distorch_alloc = calculate_vvram_allocation_string(model, virtual_vram_str)
 
     eq_line = "=" * 47
     dash_line = "-" * 47
@@ -215,13 +215,12 @@ def analyze_ggml_loading(model, allocations_str):
     return {"device_assignments": device_assignments}
 
 def calculate_vvram_allocation_string(model, virtual_vram_str):
-
     recipient_device, vram_amount, donors = virtual_vram_str.split(';')
     virtual_vram_gb = float(vram_amount)
 
     eq_line = "=" * 47
     dash_line = "-" * 47
-    fmt_assign = "{:<8} {:<6} {:<11} {:<7} {:<10}"
+    fmt_assign = "{:<8} {:<6} {:>11} {:>9} {:>9}"
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(eq_line)
@@ -233,26 +232,33 @@ def calculate_vvram_allocation_string(model, virtual_vram_str):
     recipient_vram = mm.get_total_memory(torch.device(recipient_device)) / (1024**3)
     recipient_virtual = recipient_vram + virtual_vram_gb
 
-    logging.info(fmt_assign.format(recipient_device, 'recip', f"    {recipient_vram:.2f}GB", f"  {recipient_virtual:.2f}GB", f" +{virtual_vram_gb:.2f}GB"))
+    logging.info(fmt_assign.format(recipient_device, 'recip', f"{recipient_vram:.2f}GB",f"{recipient_virtual:.2f}GB", f"+{virtual_vram_gb:.2f}GB"))
 
     ram_donors = [d for d in donors.split(',') if d != 'cpu']
-    has_cpu = 'cpu' in donors.split(',')
-    donation_per_donor = virtual_vram_gb / (len(ram_donors) + (1 if has_cpu else 0))
-
+    remaining_vram_needed = virtual_vram_gb
+    
     donor_device_info = {}
+    donor_allocations = {}
+    
     for donor in ram_donors:
         donor_vram = mm.get_total_memory(torch.device(donor)) / (1024**3)
-        donor_virtual = donor_vram - donation_per_donor
+        max_donor_capacity = donor_vram * 0.9
+        
+        donation = min(remaining_vram_needed, max_donor_capacity)
+        donor_virtual = donor_vram - donation
+        remaining_vram_needed -= donation
+        donor_allocations[donor] = donation
+            
         donor_device_info[donor] = (donor_vram, donor_virtual)
-        logging.info(fmt_assign.format(donor, 'donor', f"    {donor_vram:.2f}GB", f"  {donor_virtual:.2f}GB", f" -{donation_per_donor:.2f}GB"))
+        logging.info(fmt_assign.format(donor, 'donor', f"{donor_vram:.2f}GB",  f"{donor_virtual:.2f}GB", f"-{donation:.2f}GB"))
     
-    if has_cpu:
-        system_dram_gb = mm.get_total_memory(torch.device('cpu')) / (1024**3)
-        cpu_virtual = system_dram_gb - donation_per_donor
-        logging.info(fmt_assign.format('cpu', 'donor', f"    {system_dram_gb:.2f}GB", f"  {cpu_virtual:.2f}GB", f" -{donation_per_donor:.2f}GB"))
+    system_dram_gb = mm.get_total_memory(torch.device('cpu')) / (1024**3)
+    cpu_donation = remaining_vram_needed
+    cpu_virtual = system_dram_gb - cpu_donation
+    donor_allocations['cpu'] = cpu_donation
+    logging.info(fmt_assign.format('cpu', 'donor', f"{system_dram_gb:.2f}GB", f"{cpu_virtual:.2f}GB", f"-{cpu_donation:.2f}GB"))
     
     logging.info(dash_line)
-
 
     layer_summary = {}
     layer_list = []
@@ -273,16 +279,12 @@ def calculate_vvram_allocation_string(model, virtual_vram_str):
             total_memory += layer_memory
 
     model_size_gb = total_memory / (1024**3)
+    new_model_size_gb = max(0, model_size_gb - virtual_vram_gb)
 
-    if model_size_gb-virtual_vram_gb<0:
-        new_model_size_gb = 0
-    else:
-        new_model_size_gb = model_size_gb - virtual_vram_gb
+    logging.info(fmt_assign.format('model', 'model', f"{model_size_gb:.2f}GB",f"{new_model_size_gb:.2f}GB", f"-{virtual_vram_gb:.2f}GB"))
 
-    logging.info(fmt_assign.format('model', 'model', f"    {model_size_gb:.2f}GB", f"  {new_model_size_gb:.2f}GB", f"  -{virtual_vram_gb:.2f}GB"))
-
-    if model_size_gb > (recipient_vram*0.9):
-        on_recipient = recipient_vram*0.9
+    if model_size_gb > (recipient_vram * 0.9):
+        on_recipient = recipient_vram * 0.9
         on_virtuals = model_size_gb - on_recipient
         logging.info(f"\nWarning: Model size is greater than 90% of recipient VRAM. {on_virtuals:.2f} GB of GGML Layers Offloaded Automatically to Virtual VRAM.\n")
     else:
@@ -290,19 +292,18 @@ def calculate_vvram_allocation_string(model, virtual_vram_str):
         on_virtuals = 0
 
     new_on_recipient = max(0, on_recipient - virtual_vram_gb)
-    new_on_virtuals = min(model_size_gb, virtual_vram_gb / (len(ram_donors) + (1 if has_cpu else 0)))
 
     allocation_parts = []
-    recipient_percent = new_on_recipient / recipient_vram if recipient_vram > 0 else 0.0
+    recipient_percent = new_on_recipient / recipient_vram
     allocation_parts.append(f"{recipient_device},{recipient_percent:.4f}")
 
     for donor in ram_donors:
         donor_vram = donor_device_info[donor][0]
-        donor_percent = new_on_virtuals / donor_vram if donor_vram > 0 else 0.0
+        donor_percent = donor_allocations[donor] / donor_vram
         allocation_parts.append(f"{donor},{donor_percent:.4f}")
-    if has_cpu:
-        cpu_percent = new_on_virtuals / system_dram_gb if system_dram_gb > 0 else 0.0
-        allocation_parts.append(f"cpu,{cpu_percent:.4f}")
+    
+    cpu_percent = donor_allocations['cpu'] / system_dram_gb
+    allocation_parts.append(f"cpu,{cpu_percent:.4f}")
 
     allocation_string = ";".join(allocation_parts)
     fmt_mem = "{:<20}{:>20}"
@@ -553,7 +554,17 @@ def override_class_with_distorch(cls):
             fn = getattr(super(), cls.FUNCTION)
             out = fn(*args, **kwargs)
 
-            vram_string = f"{device};{virtual_vram_gb};cpu" if virtual_vram_gb > 0 else ""
+            vram_string = ""
+            if virtual_vram_gb > 0:
+                if use_other_vram:
+                    available_devices = [d for d in get_device_list() if d.startswith('cuda')]
+                    other_devices = [d for d in available_devices if d != device]
+                    other_devices.sort(key=lambda x: int(x.split(':')[1] if ':' in x else x[-1]), reverse=False)
+                    device_string = ','.join(other_devices + ['cpu'])
+                    vram_string = f"{device};{virtual_vram_gb};{device_string}"
+                else:
+                    vram_string = f"{device};{virtual_vram_gb};cpu"
+
             full_allocation = f"{expert_mode_allocations}#{vram_string}" if expert_mode_allocations or vram_string else ""
             
             logging.info(f"[DisTorch] Full allocation string: {full_allocation}")
@@ -581,7 +592,6 @@ def check_module_exists(module_path):
 NODE_CLASS_MAPPINGS = {
     "DeviceSelectorMultiGPU": DeviceSelectorMultiGPU,
     "HunyuanVideoEmbeddingsAdapter": HunyuanVideoEmbeddingsAdapter,
-    "MergeFluxLoRAsQuantizeAndLoad": MergeFluxLoRAsQuantizeAndLoad,
 }
 
 NODE_CLASS_MAPPINGS["MergeFluxLoRAsQuantizeAndLoaddMultiGPU"] = override_class(MergeFluxLoRAsQuantizeAndLoad)
