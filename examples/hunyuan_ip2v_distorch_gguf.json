@@ -159,7 +159,7 @@
         452.87860107421875
       ],
       "flags": {},
-      "order": 10,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -220,43 +220,6 @@
       ]
     },
     {
-      "id": 115,
-      "type": "UnetLoaderGGUFDisTorchMultiGPU",
-      "pos": [
-        -807.809814453125,
-        227.3965301513672
-      ],
-      "size": [
-        342.1245422363281,
-        106
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            276,
-            277
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "UnetLoaderGGUFDisTorchMultiGPU"
-      },
-      "widgets_values": [
-        "hunyuan-video-t2v-720p-Q8_0.gguf",
-        "cuda:0",
-        "cuda:0,0.15;cpu,0.5"
-      ],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
       "id": 112,
       "type": "LoadImage",
       "pos": [
@@ -268,7 +231,7 @@
         314
       ],
       "flags": {},
-      "order": 3,
+      "order": 2,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -306,7 +269,7 @@
         190.77996826171875
       ],
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -332,7 +295,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -372,7 +335,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -540,7 +503,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -572,7 +535,7 @@
         130
       ],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -594,41 +557,6 @@
         73,
         1
       ]
-    },
-    {
-      "id": 25,
-      "type": "RandomNoise",
-      "pos": [
-        389.7550354003906,
-        -21.38304328918457
-      ],
-      "size": [
-        250.37998962402344,
-        82
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "NOISE",
-          "type": "NOISE",
-          "links": [
-            37
-          ],
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "RandomNoise"
-      },
-      "widgets_values": [
-        5770521,
-        "fixed"
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
     },
     {
       "id": 73,
@@ -685,7 +613,7 @@
       ],
       "size": [
         451.07391357421875,
-        592.0040893554688
+        334
       ],
       "flags": {},
       "order": 16,
@@ -751,6 +679,80 @@
           "muted": false
         }
       }
+    },
+    {
+      "id": 115,
+      "type": "UnetLoaderGGUFDisTorchMultiGPU",
+      "pos": [
+        -810.4765014648438,
+        219.3965301513672
+      ],
+      "size": [
+        342.1245422363281,
+        154
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            276,
+            277
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UnetLoaderGGUFDisTorchMultiGPU"
+      },
+      "widgets_values": [
+        "hunyuan-video-t2v-720p-Q4_K_M.gguf",
+        "cuda:0",
+        4,
+        false,
+        ""
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 25,
+      "type": "RandomNoise",
+      "pos": [
+        368.4217834472656,
+        72.61695861816406
+      ],
+      "size": [
+        250.37998962402344,
+        82
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            37
+          ],
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        5770521,
+        "fixed"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
     }
   ],
   "links": [
@@ -901,16 +903,18 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.7247295000001047,
-      "offset": [
-        1743.9442159363227,
-        215.31117435648653
-      ]
+      "scale": 1,
+      "offset": {
+        "0": 1075.0079345703125,
+        "1": 156.88380432128906
+      }
     },
     "groupNodes": {},
     "ue_links": [],
     "VHS_latentpreview": false,
-    "VHS_latentpreviewrate": 0
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
   },
   "version": 0.4
 }

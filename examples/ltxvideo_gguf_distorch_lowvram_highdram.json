@@ -1,6 +1,6 @@
 {
-  "last_node_id": 312,
-  "last_link_id": 777,
+  "last_node_id": 313,
+  "last_link_id": 779,
   "nodes": [
     {
       "id": 271,
@@ -266,7 +266,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 12,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -282,7 +282,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 719
+          "link": 779
         },
         {
           "name": "image",
@@ -356,7 +356,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -388,95 +388,6 @@
         1,
         0.25,
         3
-      ]
-    },
-    {
-      "id": 274,
-      "type": "ImageResizeKJ",
-      "pos": [
-        1738.9410400390625,
-        -400.31304931640625
-      ],
-      "size": [
-        210,
-        238
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 771
-        },
-        {
-          "name": "get_image_size",
-          "type": "IMAGE",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "width_input",
-          "type": "INT",
-          "link": null,
-          "widget": {
-            "name": "width_input"
-          },
-          "shape": 7
-        },
-        {
-          "name": "height_input",
-          "type": "INT",
-          "link": null,
-          "widget": {
-            "name": "height_input"
-          },
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            720
-          ],
-          "slot_index": 0
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "links": [
-            721,
-            727
-          ],
-          "slot_index": 1
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": [
-            722,
-            728
-          ],
-          "slot_index": 2
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageResizeKJ"
-      },
-      "widgets_values": [
-        768,
-        768,
-        "nearest-exact",
-        true,
-        16,
-        0,
-        0,
-        "center"
       ]
     },
     {
@@ -535,7 +446,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 7,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -560,42 +471,6 @@
       "widgets_values": []
     },
     {
-      "id": 308,
-      "type": "UnetLoaderGGUFDisTorchMultiGPU",
-      "pos": [
-        1742.724365234375,
-        -987.2313232421875
-      ],
-      "size": [
-        339.9610290527344,
-        126.85929107666016
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            772
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "UnetLoaderGGUFDisTorchMultiGPU"
-      },
-      "widgets_values": [
-        "ltx-video-2b-v0.9-Q5_0.gguf",
-        "cuda:0",
-        "cuda:0,0.15;cpu,0.8"
-      ],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
       "id": 312,
       "type": "CLIPLoaderGGUFMultiGPU",
       "pos": [
@@ -607,7 +482,7 @@
         123.96922302246094
       ],
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -628,53 +503,6 @@
         "t5-v1_1-xxl-encoder-Q8_0.gguf",
         "ltxv",
         "cpu"
-      ],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
-      "id": 266,
-      "type": "CheckpointLoaderSimpleMultiGPU",
-      "pos": [
-        1421.14599609375,
-        -898.4613647460938
-      ],
-      "size": [
-        252,
-        128.28294372558594
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [],
-          "slot_index": 0
-        },
-        {
-          "name": "CLIP",
-          "type": "CLIP",
-          "links": null
-        },
-        {
-          "name": "VAE",
-          "type": "VAE",
-          "links": [
-            719,
-            732
-          ],
-          "slot_index": 2
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CheckpointLoaderSimpleMultiGPU"
-      },
-      "widgets_values": [
-        "ltx-video-2b-v0.9.1.safetensors",
-        "cuda:0"
       ],
       "color": "#233",
       "bgcolor": "#355"
@@ -841,56 +669,6 @@
       }
     },
     {
-      "id": 268,
-      "type": "CLIPTextEncode",
-      "pos": [
-        1720.8240966796875,
-        -838.1546630859375
-      ],
-      "size": [
-        392.4562072753906,
-        194.1393585205078
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 8,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "clip",
-          "type": "CLIP",
-          "link": 776
-        }
-      ],
-      "outputs": [
-        {
-          "name": "CONDITIONING",
-          "type": "CONDITIONING",
-          "links": [
-            717
-          ],
-          "slot_index": 0
-        }
-      ],
-      "title": "LTXV Pos",
-      "properties": {
-        "Node name for S&R": "CLIPTextEncode",
-        "enableTabs": false,
-        "tabWidth": 65,
-        "tabXOffset": 10,
-        "hasSecondTab": false,
-        "secondTabText": "Send Back",
-        "secondTabOffset": 80,
-        "secondTabWidth": 65
-      },
-      "widgets_values": [
-        "This describes the first frame of a video that needs to subtly animated for 5 seconds: The image is a black and white photograph of a waterfall. The waterfall is cascading down a rocky cliff, with the water flowing over the rocks and creating a misty effect. The rocks are large and jagged, and the water is flowing over them. The cliff is covered in trees and shrubs, and there is a hill in the background. The sky is overcast and the overall mood of the image is peaceful and serene."
-      ],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
       "id": 279,
       "type": "VAEDecode",
       "pos": [
@@ -915,7 +693,7 @@
         {
           "name": "vae",
           "type": "VAE",
-          "link": 732
+          "link": 778
         }
       ],
       "outputs": [
@@ -954,7 +732,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -989,6 +767,219 @@
       ],
       "color": "#322",
       "bgcolor": "#533"
+    },
+    {
+      "id": 268,
+      "type": "CLIPTextEncode",
+      "pos": [
+        1724.329833984375,
+        -756.010986328125
+      ],
+      "size": [
+        358.89739990234375,
+        117.5052490234375
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 776
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            717
+          ],
+          "slot_index": 0
+        }
+      ],
+      "title": "LTXV Pos",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65
+      },
+      "widgets_values": [
+        "This describes the first frame of a video that needs to subtly animated for 5 seconds: The image is a black and white photograph of a waterfall. The waterfall is cascading down a rocky cliff, with the water flowing over the rocks and creating a misty effect. The rocks are large and jagged, and the water is flowing over them. The cliff is covered in trees and shrubs, and there is a hill in the background. The sky is overcast and the overall mood of the image is peaceful and serene."
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 308,
+      "type": "UnetLoaderGGUFDisTorchMultiGPU",
+      "pos": [
+        1738.21630859375,
+        -938.6461791992188
+      ],
+      "size": [
+        339.9610290527344,
+        154
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            772
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UnetLoaderGGUFDisTorchMultiGPU"
+      },
+      "widgets_values": [
+        "ltx-video-2b-v0.9.1-F16.gguf",
+        "cuda:0",
+        4,
+        false,
+        ""
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 274,
+      "type": "ImageResizeKJ",
+      "pos": [
+        1734.0921630859375,
+        -350.01019287109375
+      ],
+      "size": [
+        210,
+        238
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 771
+        },
+        {
+          "name": "get_image_size",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "width_input",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "width_input"
+          },
+          "shape": 7
+        },
+        {
+          "name": "height_input",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "height_input"
+          },
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            720
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            721,
+            727
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            722,
+            728
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageResizeKJ"
+      },
+      "widgets_values": [
+        768,
+        768,
+        "nearest-exact",
+        true,
+        16,
+        0,
+        0,
+        "center"
+      ]
+    },
+    {
+      "id": 313,
+      "type": "VAELoaderMultiGPU",
+      "pos": [
+        1725.0933837890625,
+        -463.51104736328125
+      ],
+      "size": [
+        315,
+        82
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            778,
+            779
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoaderMultiGPU"
+      },
+      "widgets_values": [
+        "ltxv-0.9.1-vae.safetensors",
+        "cuda:0"
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
     }
   ],
   "links": [
@@ -2561,14 +2552,6 @@
       "CONDITIONING"
     ],
     [
-      719,
-      266,
-      2,
-      273,
-      2,
-      "VAE"
-    ],
-    [
       720,
       274,
       0,
@@ -2639,14 +2622,6 @@
       279,
       0,
       "LATENT"
-    ],
-    [
-      732,
-      266,
-      2,
-      279,
-      1,
-      "VAE"
     ],
     [
       733,
@@ -2735,6 +2710,22 @@
       269,
       0,
       "CLIP"
+    ],
+    [
+      778,
+      313,
+      0,
+      279,
+      1,
+      "VAE"
+    ],
+    [
+      779,
+      313,
+      0,
+      273,
+      2,
+      "VAE"
     ]
   ],
   "groups": [
@@ -2755,15 +2746,17 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.964614964500143,
-      "offset": [
-        -869.1439186341164,
-        1102.8630885776138
-      ]
+      "scale": 1.1,
+      "offset": {
+        "0": -999.0325317382812,
+        "1": 1194.420166015625
+      }
     },
     "ue_links": [],
     "VHS_latentpreview": false,
-    "VHS_latentpreviewrate": 0
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
   },
   "version": 0.4
 }
