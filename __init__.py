@@ -1,4 +1,3 @@
-# __init__.py
 import copy
 import torch
 import sys
@@ -7,8 +6,29 @@ import os
 from pathlib import Path
 import logging
 import folder_paths
+import shutil
 from collections import defaultdict
 import hashlib
+import tempfile
+import subprocess
+import gc
+from safetensors.torch import save_file, load_file
+import comfy.utils
+from typing import Dict, List 
+
+
+from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
+from .nodes import (
+    UnetLoaderGGUF, UnetLoaderGGUFAdvanced,
+    CLIPLoaderGGUF, DualCLIPLoaderGGUF, TripleCLIPLoaderGGUF,
+    LTXVLoader,
+    Florence2ModelLoader, DownloadAndLoadFlorence2Model,
+    CheckpointLoaderNF4,
+    LoadFluxControlNet,
+    MMAudioModelLoader, MMAudioFeatureUtilsLoader, MMAudioSampler,
+    PulidModelLoader, PulidInsightFaceLoader, PulidEvaClipLoader,
+    HyVideoModelLoader, HyVideoVAELoader, DownloadAndLoadHyVideoTextEncoder
+)
 
 current_device = mm.get_torch_device()
 model_allocation_store = {}
@@ -79,8 +99,19 @@ def register_patched_ggufmodelpatcher():
 def analyze_ggml_loading(model, allocations_str):
     DEVICE_RATIOS_DISTORCH = {}
     device_table = {}
+    distorch_alloc = allocations_str
+    virtual_vram_gb = 0.0
 
-    for allocation in allocations_str.split(';'):
+    if '#' in allocations_str:
+        distorch_alloc, virtual_vram_str = allocations_str.split('#')
+        if not distorch_alloc:
+            distorch_alloc = calculate_vvram_allocation_string(model, virtual_vram_str)
+
+    eq_line = "=" * 47
+    dash_line = "-" * 47
+    fmt_assign = "{:<12}{:>10}{:>14}{:>10}"
+
+    for allocation in distorch_alloc.split(';'):
         dev_name, fraction = allocation.split(',')
         fraction = float(fraction)
         total_mem_bytes = mm.get_total_memory(torch.device(dev_name))
@@ -92,17 +123,11 @@ def analyze_ggml_loading(model, allocations_str):
             "alloc_gb": alloc_gb
         }
 
-    eq_line = "=" * 47
-    dash_line = "-" * 47
-    fmt_alloc = "{:<12}{:>10}{:>14}{:>10}"
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(eq_line)
-    logging.info("               DisTorch Analysis")
-    logging.info(eq_line)
-    logging.info(dash_line)
     logging.info("          DisTorch Device Allocations")
-    logging.info(dash_line)
-    logging.info(fmt_alloc.format("Device", "Alloc %", "Total (GB)", " Alloc (GB)"))
+    logging.info(eq_line)
+    logging.info(fmt_assign.format("Device", "Alloc %", "Total (GB)", " Alloc (GB)"))
     logging.info(dash_line)
 
     sorted_devices = sorted(device_table.keys(), key=lambda d: (d == "cpu", d))
@@ -111,7 +136,7 @@ def analyze_ggml_loading(model, allocations_str):
         frac = device_table[dev]["fraction"]
         tot_gb = device_table[dev]["total_gb"]
         alloc_gb = device_table[dev]["alloc_gb"]
-        logging.info(fmt_alloc.format(dev,f"{int(frac * 100)}%",f"{tot_gb:.2f}",f"{alloc_gb:.2f}"))
+        logging.info(fmt_assign.format(dev,f"{int(frac * 100)}%",f"{tot_gb:.2f}",f"{alloc_gb:.2f}"))
 
     logging.info(dash_line)
 
@@ -189,6 +214,102 @@ def analyze_ggml_loading(model, allocations_str):
 
     return {"device_assignments": device_assignments}
 
+def calculate_vvram_allocation_string(model, virtual_vram_str):
+    recipient_device, vram_amount, donors = virtual_vram_str.split(';')
+    virtual_vram_gb = float(vram_amount)
+
+    eq_line = "=" * 47
+    dash_line = "-" * 47
+    fmt_assign = "{:<8} {:<6} {:>11} {:>9} {:>9}"
+
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.info(eq_line)
+    logging.info("          DisTorch Virtual VRAM Analysis")
+    logging.info(eq_line)
+    logging.info(fmt_assign.format("Object", "Role", "Original(GB)", "Total(GB)", "Virt(GB)"))
+    logging.info(dash_line)
+
+    recipient_vram = mm.get_total_memory(torch.device(recipient_device)) / (1024**3)
+    recipient_virtual = recipient_vram + virtual_vram_gb
+
+    logging.info(fmt_assign.format(recipient_device, 'recip', f"{recipient_vram:.2f}GB",f"{recipient_virtual:.2f}GB", f"+{virtual_vram_gb:.2f}GB"))
+
+    ram_donors = [d for d in donors.split(',') if d != 'cpu']
+    remaining_vram_needed = virtual_vram_gb
+    
+    donor_device_info = {}
+    donor_allocations = {}
+    
+    for donor in ram_donors:
+        donor_vram = mm.get_total_memory(torch.device(donor)) / (1024**3)
+        max_donor_capacity = donor_vram * 0.9
+        
+        donation = min(remaining_vram_needed, max_donor_capacity)
+        donor_virtual = donor_vram - donation
+        remaining_vram_needed -= donation
+        donor_allocations[donor] = donation
+            
+        donor_device_info[donor] = (donor_vram, donor_virtual)
+        logging.info(fmt_assign.format(donor, 'donor', f"{donor_vram:.2f}GB",  f"{donor_virtual:.2f}GB", f"-{donation:.2f}GB"))
+    
+    system_dram_gb = mm.get_total_memory(torch.device('cpu')) / (1024**3)
+    cpu_donation = remaining_vram_needed
+    cpu_virtual = system_dram_gb - cpu_donation
+    donor_allocations['cpu'] = cpu_donation
+    logging.info(fmt_assign.format('cpu', 'donor', f"{system_dram_gb:.2f}GB", f"{cpu_virtual:.2f}GB", f"-{cpu_donation:.2f}GB"))
+    
+    logging.info(dash_line)
+
+    layer_summary = {}
+    layer_list = []
+    memory_by_type = defaultdict(int)
+    total_memory = 0
+
+    for name, module in model.named_modules():
+        if hasattr(module, "weight"):
+            layer_type = type(module).__name__
+            layer_summary[layer_type] = layer_summary.get(layer_type, 0) + 1
+            layer_list.append((name, module, layer_type))
+            layer_memory = 0
+            if module.weight is not None:
+                layer_memory += module.weight.numel() * module.weight.element_size()
+            if hasattr(module, "bias") and module.bias is not None:
+                layer_memory += module.bias.numel() * module.bias.element_size()
+            memory_by_type[layer_type] += layer_memory
+            total_memory += layer_memory
+
+    model_size_gb = total_memory / (1024**3)
+    new_model_size_gb = max(0, model_size_gb - virtual_vram_gb)
+
+    logging.info(fmt_assign.format('model', 'model', f"{model_size_gb:.2f}GB",f"{new_model_size_gb:.2f}GB", f"-{virtual_vram_gb:.2f}GB"))
+
+    if model_size_gb > (recipient_vram * 0.9):
+        on_recipient = recipient_vram * 0.9
+        on_virtuals = model_size_gb - on_recipient
+        logging.info(f"\nWarning: Model size is greater than 90% of recipient VRAM. {on_virtuals:.2f} GB of GGML Layers Offloaded Automatically to Virtual VRAM.\n")
+    else:
+        on_recipient = model_size_gb
+        on_virtuals = 0
+
+    new_on_recipient = max(0, on_recipient - virtual_vram_gb)
+
+    allocation_parts = []
+    recipient_percent = new_on_recipient / recipient_vram
+    allocation_parts.append(f"{recipient_device},{recipient_percent:.4f}")
+
+    for donor in ram_donors:
+        donor_vram = donor_device_info[donor][0]
+        donor_percent = donor_allocations[donor] / donor_vram
+        allocation_parts.append(f"{donor},{donor_percent:.4f}")
+    
+    cpu_percent = donor_allocations['cpu'] / system_dram_gb
+    allocation_parts.append(f"cpu,{cpu_percent:.4f}")
+
+    allocation_string = ";".join(allocation_parts)
+    fmt_mem = "{:<20}{:>20}"
+    logging.info(fmt_mem.format("\nAllocation String", allocation_string))
+
+    return allocation_string
 
 def get_device_list():
     import torch
@@ -226,28 +347,158 @@ class HunyuanVideoEmbeddingsAdapter:
     CATEGORY = "multigpu"
 
     def adapt_embeddings(self, hyvid_embeds):
-        # Create main conditioning tensor
         cond = hyvid_embeds["prompt_embeds"]
         
-        # Create pooled dict with all our extra information
         pooled_dict = {
             "pooled_output": hyvid_embeds["prompt_embeds_2"],
             "cross_attn": hyvid_embeds["prompt_embeds"],
             "attention_mask": hyvid_embeds["attention_mask"],
         }
         
-        # Add CLIP's attention mask if present
         if hyvid_embeds["attention_mask_2"] is not None:
             pooled_dict["attention_mask_controlnet"] = hyvid_embeds["attention_mask_2"]
 
-        # Add guidance if present - typically these and negative_xxxx are empty for HunyuanVideo
         if hyvid_embeds["cfg"] is not None:
             pooled_dict["guidance"] = float(hyvid_embeds["cfg"])
             pooled_dict["start_percent"] = float(hyvid_embeds["start_percent"]) if hyvid_embeds["start_percent"] is not None else 0.0
             pooled_dict["end_percent"] = float(hyvid_embeds["end_percent"]) if hyvid_embeds["end_percent"] is not None else 1.0
 
-        # Finally create the conditioning list in the exact format that encode_from_tokens_scheduled returns
         return ([[cond, pooled_dict]],)
+
+
+class MergeFluxLoRAsQuantizeAndLoad:
+    @classmethod
+    def INPUT_TYPES(cls):
+        unet_name = folder_paths.get_filename_list("diffusion_models")
+        loras = ["None"] + folder_paths.get_filename_list("loras")
+        inputs = {
+            "required": {
+                "unet_name": (unet_name,),
+                "switch_1": (["Off", "On"],),
+                "lora_name_1": (loras,),
+                "lora_weight_1": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "switch_2": (["Off", "On"],),
+                "lora_name_2": (loras,),
+                "lora_weight_2": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "switch_3": (["Off", "On"],),
+                "lora_name_3": (loras,),
+                "lora_weight_3": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "switch_4": (["Off", "On"],),
+                "lora_name_4": (loras,),
+                "lora_weight_4": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "quantization": (["Q2_K", "Q3_K_S", "Q4_0", "Q4_1", "Q4_K_S", "Q5_0", "Q5_1", "Q5_K_S", "Q6_K", "Q8_0", "FP16"], {"default": "Q4_K_S"}),
+                "delete_final_gguf": ("BOOLEAN", {"default": False}),
+                "new_model_name": ("STRING", {"default": "merged_model"}),
+            }
+        }
+        return inputs
+
+    RETURN_TYPES = ("MODEL",)
+    FUNCTION = "load_and_quantize"
+    CATEGORY = "loaders"
+
+    def merge_flux_loras(self, model_sd: dict, lora_paths: list, weights: list, device="cuda") -> dict:
+        for lora_path, weight in zip(lora_paths, weights):
+            logging.info(f"[DEBUG] Merging LoRA file: {lora_path} with weight: {weight}")
+            lora_sd = load_file(lora_path, device=device)
+            for key in list(lora_sd.keys()):
+                if "lora_down" not in key:
+                    continue
+                base_name = key[: key.rfind(".lora_down")]
+                up_key = key.replace("lora_down", "lora_up")
+                module_name = base_name.replace("_", ".")
+                alpha_key = f"{base_name}.alpha"
+                if module_name not in model_sd:
+                    logging.info(f"[DEBUG] Module {module_name} not found in model_sd; skipping key {key}")
+                    continue
+                down_weight = lora_sd[key].float()
+                up_weight = lora_sd[up_key].float()
+                alpha = float(lora_sd.get(alpha_key, up_weight.shape[0]))
+                scale = weight * alpha / up_weight.shape[0]
+                logging.info(f"[DEBUG] Merging module: {module_name} with alpha: {alpha}, scale: {scale}")
+                target_weight = model_sd[module_name]
+                if len(target_weight.shape) == 2:
+                    update = (up_weight @ down_weight) * scale
+                else:
+                    if down_weight.shape[2:4] == (1, 1):
+                        update = (up_weight.squeeze(3).squeeze(2) @ down_weight.squeeze(3).squeeze(2))
+                        update = update.unsqueeze(2).unsqueeze(3) * scale
+                    else:
+                        update = torch.nn.functional.conv2d(
+                            down_weight.permute(1, 0, 2, 3), up_weight
+                        ).permute(1, 0, 2, 3) * scale
+                model_sd[module_name] = target_weight + update.to(target_weight.dtype)
+                logging.info(f"[DEBUG] Updated module: {module_name}")
+                del up_weight, down_weight, update
+            del lora_sd
+            torch.cuda.empty_cache()
+        return model_sd
+
+    def convert_to_gguf(self, model_path, working_dir):
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        convert_script = os.path.join(base_path, "ComfyUI-GGUF", "tools", "convert.py")
+        temp_gguf = os.path.join(working_dir, "temp_converted.gguf")
+        logging.info("[DEBUG] Running conversion script: " + convert_script)
+        subprocess.run([sys.executable, convert_script, "--src", model_path, "--dst", temp_gguf], check=True)
+        logging.info("[DEBUG] Conversion complete.")
+        return temp_gguf
+
+    def load_and_quantize(self, unet_name, quantization, delete_final_gguf, new_model_name, **kwargs):
+        mapping = {"FP16": "F16"}
+        logging.info(f"[DEBUG] Starting load_and_quantize: {new_model_name} | Quantization: {quantization}")
+        with tempfile.TemporaryDirectory() as merge_dir:
+            merged_model_path = os.path.join(merge_dir, "merged_model.safetensors")
+            model_path = folder_paths.get_full_path("diffusion_models", unet_name)
+            lora_list = []
+            for i in range(1, 5):
+                name = kwargs.get(f"lora_name_{i}", "None")
+                switch = kwargs.get(f"switch_{i}", "Off")
+                logging.info(f"[DEBUG] Processing LoRA slot {i}: name = {name}, switch = {switch}")
+                if switch == "On" and name and name != "None":
+                    lora_file_path = folder_paths.get_full_path("loras", name)
+                    weight = kwargs.get(f"lora_weight_{i}", 1.0)
+                    lora_list.append((lora_file_path, weight))
+                    logging.info(f"[DEBUG] Slot {i} active: path = {lora_file_path}, weight = {weight}")
+                else:
+                    logging.info(f"[DEBUG] Slot {i} is inactive")
+            logging.info(f"[DEBUG] Total active LoRAs: {len(lora_list)}")
+            if lora_list:
+                model_sd = load_file(model_path, device="cuda")
+                model_sd = self.merge_flux_loras(
+                    model_sd,
+                    [lp for lp, _ in lora_list],
+                    [w for _, w in lora_list]
+                )
+                save_file(model_sd, merged_model_path)
+                del model_sd
+                torch.cuda.empty_cache()
+            else:
+                shutil.copy2(model_path, merged_model_path)
+            initial_gguf = self.convert_to_gguf(merged_model_path, merge_dir)
+            logging.info("[DEBUG] Initial GGUF file created.")
+            if quantization == "FP16":
+                final_gguf = os.path.join(merge_dir, f"{new_model_name}-{mapping.get(quantization, quantization)}.gguf")
+                shutil.copy2(initial_gguf, final_gguf)
+                logging.info("[DEBUG] FP16 selected; conversion skipped.")
+            else:
+                binary = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binaries", "linux", "llama-quantize")
+                final_gguf = os.path.join(merge_dir, f"quantized_{quantization}.gguf")
+                subprocess.run([binary, initial_gguf, final_gguf, quantization], check=True)
+                logging.info("[DEBUG] Quantization completed.")
+            models_dir = os.path.join(folder_paths.models_dir, "unet")
+            os.makedirs(models_dir, exist_ok=True)
+            final_name = f"{new_model_name}-{mapping.get(quantization, quantization)}.gguf"
+            final_path = os.path.join(models_dir, final_name)
+            shutil.copy2(final_gguf, final_path)
+            logging.info("[DEBUG] Final model file copied to: " + final_path)
+            logging.info("[DEBUG] Loading final model.")
+            loader = UnetLoaderGGUF()
+            result = loader.load_unet(final_name)
+            logging.info("[DEBUG] Final model loaded.")
+            if delete_final_gguf:
+                os.unlink(final_path)
+            return result
+
 
 def override_class(cls):
     class NodeOverride(cls):
@@ -282,677 +533,115 @@ def override_class_with_distorch(cls):
             default_device = devices[1] if len(devices) > 1 else devices[0]
             inputs["optional"] = inputs.get("optional", {})
             inputs["optional"]["device"] = (devices, {"default": default_device})
-            inputs["optional"]["allocations"] = ("STRING", {"multiline": False, "default": "cuda:0,0.15;cpu,0.5"})
+            inputs["optional"]["virtual_vram_gb"] = ("FLOAT", {"default": 4.0, "min": 0.0, "max": 24.0, "step": 0.1})
+            inputs["optional"]["use_other_vram"] = ("BOOLEAN", {"default": False})
+            inputs["optional"]["expert_mode_allocations"] = ("STRING", {
+                "multiline": False, 
+                "default": "",
+                "tooltip": "Expert use only: Manual VRAM allocation string. Incorrect values can cause crashes. Do not modify unless you fully understand DisTorch memory management."
+            })
             return inputs
 
         CATEGORY = "multigpu"
         FUNCTION = "override"
 
-        def override(self, *args, device=None, allocations=None, **kwargs):
+        def override(self, *args, device=None, expert_mode_allocations=None, use_other_vram=None, virtual_vram_gb=0.0, **kwargs):
             global current_device
             if device is not None:
                 current_device = device
-                
+            
             register_patched_ggufmodelpatcher()
             fn = getattr(super(), cls.FUNCTION)
             out = fn(*args, **kwargs)
 
+            vram_string = ""
+            if virtual_vram_gb > 0:
+                if use_other_vram:
+                    available_devices = [d for d in get_device_list() if d.startswith('cuda')]
+                    other_devices = [d for d in available_devices if d != device]
+                    other_devices.sort(key=lambda x: int(x.split(':')[1] if ':' in x else x[-1]), reverse=False)
+                    device_string = ','.join(other_devices + ['cpu'])
+                    vram_string = f"{device};{virtual_vram_gb};{device_string}"
+                else:
+                    vram_string = f"{device};{virtual_vram_gb};cpu"
+
+            full_allocation = f"{expert_mode_allocations}#{vram_string}" if expert_mode_allocations or vram_string else ""
+            
+            logging.info(f"[DisTorch] Full allocation string: {full_allocation}")
+            
             if hasattr(out[0], 'model'):
                 model_hash = create_model_hash(out[0], "override")
-                model_allocation_store[model_hash] = allocations
+                model_allocation_store[model_hash] = full_allocation
             elif hasattr(out[0], 'patcher') and hasattr(out[0].patcher, 'model'):
                 model_hash = create_model_hash(out[0].patcher, "override")
-                model_allocation_store[model_hash] = allocations
+                model_allocation_store[model_hash] = full_allocation
 
             return out
 
     return NodeOverrideDisTorch
 
+def check_module_exists(module_path):
+    full_path = os.path.join(folder_paths.get_folder_paths("custom_nodes")[0], module_path)
+    logging.info(f"MultiGPU: Checking for module at {full_path}")
+    if not os.path.exists(full_path):
+        logging.info(f"MultiGPU: Module {module_path} not found - skipping")
+        return False
+    logging.info(f"MultiGPU: Found {module_path}, creating compatible MultiGPU nodes")
+    return True
 
 NODE_CLASS_MAPPINGS = {
     "DeviceSelectorMultiGPU": DeviceSelectorMultiGPU,
     "HunyuanVideoEmbeddingsAdapter": HunyuanVideoEmbeddingsAdapter,
 }
 
-def check_module_exists(module_path):
-    full_path = os.path.join(folder_paths.get_folder_paths("custom_nodes")[0], module_path)
-    logging.info(f"MultiGPU: Checking for module at {full_path}")
+NODE_CLASS_MAPPINGS["MergeFluxLoRAsQuantizeAndLoaddMultiGPU"] = override_class(MergeFluxLoRAsQuantizeAndLoad)
 
-    if not os.path.exists(full_path):
-        logging.info(f"MultiGPU: Module {module_path} not found - skipping")
-        return False
+NODE_CLASS_MAPPINGS["UNETLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["UNETLoader"])
+NODE_CLASS_MAPPINGS["VAELoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["VAELoader"])
+NODE_CLASS_MAPPINGS["CLIPLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["CLIPLoader"])
+NODE_CLASS_MAPPINGS["DualCLIPLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["DualCLIPLoader"])
+NODE_CLASS_MAPPINGS["TripleCLIPLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["TripleCLIPLoader"])
+NODE_CLASS_MAPPINGS["CheckpointLoaderSimpleMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["CheckpointLoaderSimple"])
+NODE_CLASS_MAPPINGS["ControlNetLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["ControlNetLoader"])
 
-    logging.info(f"MultiGPU: Found {module_path}, creating compatible MultiGPU nodes")
-    return True
-
-def register_module(target_nodes):
-    from nodes import NODE_CLASS_MAPPINGS as GLOBAL_NODE_CLASS_MAPPINGS
-
-    for node in target_nodes:
-            NODE_CLASS_MAPPINGS[f"{node}MultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS[node])
-    return
-
-def register_UnetLoaderGGUFMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    class UnetLoaderGGUF:
-        @classmethod
-        def INPUT_TYPES(s):
-            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
-            return {
-                "required": {
-                    "unet_name": (unet_names,),
-                }
-            }
-
-        RETURN_TYPES = ("MODEL",)
-        FUNCTION = "load_unet"
-        CATEGORY = "bootleg"
-        TITLE = "Unet Loader (GGUF)"
-
-        def load_unet(self, unet_name, dequant_dtype=None, patch_dtype=None, patch_on_device=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["UnetLoaderGGUF"]()
-            return original_loader.load_unet(unet_name, dequant_dtype, patch_dtype, patch_on_device)
-
-    # Create both MultiGPU versions of the base class
-    UnetLoaderGGUFMultiGPU = override_class(UnetLoaderGGUF)
-    NODE_CLASS_MAPPINGS["UnetLoaderGGUFMultiGPU"] = UnetLoaderGGUFMultiGPU
-    logging.info(f"MultiGPU: Registered UnetLoaderGGUFMultiGPU")
-
-    UnetLoaderGGUFDisTorchMultiGPU = override_class_with_distorch(UnetLoaderGGUF)
-    NODE_CLASS_MAPPINGS["UnetLoaderGGUFDisTorchMultiGPU"] = UnetLoaderGGUFDisTorchMultiGPU
-    logging.info(f"MultiGPU: Registered UnetLoaderGGUFDisTorchMultiGPU")
-
-    class UnetLoaderGGUFAdvanced(UnetLoaderGGUF):
-        @classmethod
-        def INPUT_TYPES(s):
-            unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
-            return {
-                "required": {
-                    "unet_name": (unet_names,),
-                    "dequant_dtype": (["default", "target", "float32", "float16", "bfloat16"], {"default": "default"}),
-                    "patch_dtype": (["default", "target", "float32", "float16", "bfloat16"], {"default": "default"}),
-                    "patch_on_device": ("BOOLEAN", {"default": False}),
-                }
-            }
-        TITLE = "Unet Loader (GGUF/Advanced)"
-
-    # Create both MultiGPU versions of the advanced class
-    UnetLoaderGGUFAdvancedMultiGPU = override_class(UnetLoaderGGUFAdvanced)
-    NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedMultiGPU"] = UnetLoaderGGUFAdvancedMultiGPU
-    logging.info(f"MultiGPU: Registered UnetLoaderGGUFAdvancedMultiGPU")
-
-    UnetLoaderGGUFAdvancedDisTorchMultiGPU = override_class_with_distorch(UnetLoaderGGUFAdvanced)
-    NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedDisTorchMultiGPU"] = UnetLoaderGGUFAdvancedDisTorchMultiGPU
-    logging.info(f"MultiGPU: Registered UnetLoaderGGUFAdvancedDisTorchMultiGPU")
-
-def register_CLIPLoaderGGUFMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    class CLIPLoaderGGUF:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "clip_name": (s.get_filename_list(),),
-                    "type": (["stable_diffusion", "stable_cascade", "sd3", "stable_audio", "mochi", "ltxv"],),
-                }
-            }
-
-        RETURN_TYPES = ("CLIP",)
-        FUNCTION = "load_clip"
-        CATEGORY = "bootleg"
-        TITLE = "CLIPLoader (GGUF)"
-
-        @classmethod
-        def get_filename_list(s):
-            files = []
-            files += folder_paths.get_filename_list("clip")
-            files += folder_paths.get_filename_list("clip_gguf")
-            return sorted(files)
-
-        def load_data(self, ckpt_paths):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
-            return original_loader.load_data(ckpt_paths)
-
-        def load_patcher(self, clip_paths, clip_type, clip_data):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
-            return original_loader.load_patcher(clip_paths, clip_type, clip_data)
-
-        def load_clip(self, clip_name, type="stable_diffusion"):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"]()
-            return original_loader.load_clip(clip_name, type)
-
-    # Create the MultiGPU version of the base class
-    CLIPLoaderGGUFMultiGPU = override_class(CLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFMultiGPU"] = CLIPLoaderGGUFMultiGPU
-    logging.info(f"MultiGPU: Registered CLIPLoaderGGUFMultiGPU")
-
-    CLIPLoaderGGUFDisTorchMultiGPU = override_class_with_distorch(CLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFDisTorchMultiGPU"] = CLIPLoaderGGUFDisTorchMultiGPU
-    logging.info(f"MultiGPU: Registered CLIPLoaderGGUFDisTorchMultiGPU")
-
-    # Now create the advanced version that inherits from the MultiGPU base class
-
-    class DualCLIPLoaderGGUF(CLIPLoaderGGUF):
-        @classmethod
-        def INPUT_TYPES(s):
-            file_options = (s.get_filename_list(), )
-            return {
-                "required": {
-                    "clip_name1": file_options,
-                    "clip_name2": file_options,
-                    "type": (("sdxl", "sd3", "flux", "hunyuan_video"),),
-                }
-            }
-
-        TITLE = "DualCLIPLoader (GGUF)"
-
-        def load_clip(self, clip_name1, clip_name2, type):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUF"]()
-            clip = original_loader.load_clip(clip_name1, clip_name2, type)
-            clip[0].patcher.load(force_patch_weights=True)
-            return clip
-    # Create the MultiGPU version of the advanced class
-    DualCLIPLoaderGGUFMultiGPU = override_class(DualCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFMultiGPU"] = DualCLIPLoaderGGUFMultiGPU
-    logging.info(f"MultiGPU: Registered DualCLIPLoaderGGUFMultiGPU")
-
-    DualCLIPLoaderGGUFDisTorchMultiGPU = override_class_with_distorch(DualCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFDisTorchMultiGPU"] = DualCLIPLoaderGGUFDisTorchMultiGPU
-    logging.info(f"MultiGPU: Registered DualCLIPLoaderGGUFDisTorchMultiGPU")
-
-    class TripleCLIPLoaderGGUF(CLIPLoaderGGUF):
-        @classmethod
-        def INPUT_TYPES(s):
-            file_options = (s.get_filename_list(), )
-            return {
-                "required": {
-                    "clip_name1": file_options,
-                    "clip_name2": file_options,
-                    "clip_name3": file_options,
-                }
-            }
-
-        TITLE = "TripleCLIPLoader (GGUF)"
-
-        def load_clip(self, clip_name1, clip_name2, clip_name3, type="sd3"):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUF"]()
-            return original_loader.load_clip(clip_name1, clip_name2, clip_name3, type)
-    # Create the MultiGPU version of the advanced class
-    TripleCLIPLoaderGGUFMultiGPU = override_class(TripleCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFMultiGPU"] = TripleCLIPLoaderGGUFMultiGPU
-    logging.info(f"MultiGPU: Registered TripleCLIPLoaderGGUFMultiGPU")
-
-    TripleCLIPLoaderGGUFDisTorchMultiGPU = override_class_with_distorch(TripleCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFDisTorchMultiGPU"] = TripleCLIPLoaderGGUFDisTorchMultiGPU
-    logging.info(f"MultiGPU: Registered TripleCLIPLoaderGGUFDisTorchMultiGPU")
-
-def register_LTXVLoaderMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    class LTXVLoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "ckpt_name": (folder_paths.get_filename_list("checkpoints"),
-                                {"tooltip": "The name of the checkpoint (model) to load."}),
-                    "dtype": (["bfloat16", "float32"], {"default": "bfloat16"})
-                }
-            }
-
-        RETURN_TYPES = ("MODEL", "VAE")
-        RETURN_NAMES = ("model", "vae")
-        FUNCTION = "load"
-        CATEGORY = "lightricks/LTXV"
-        TITLE = "LTXV Loader"
-        OUTPUT_NODE = False
-
-        def load(self, ckpt_name, dtype):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
-            return original_loader.load(ckpt_name, dtype)
-        def _load_unet(self, load_device, offload_device, weights, num_latent_channels, dtype, config=None ):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
-            return original_loader._load_unet(load_device, offload_device, weights, num_latent_channels, dtype, config=None )
-        def _load_vae(self, weights, config=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["LTXVLoader"]()
-            return original_loader._load_vae(weights, config=None)
+if check_module_exists("ComfyUI-LTXVideo") or check_module_exists("comfyui-ltxvideo"):
     NODE_CLASS_MAPPINGS["LTXVLoaderMultiGPU"] = override_class(LTXVLoader)
 
-    logging.info(f"MultiGPU: Registered LTXVLoaderMultiGPU")
-
-def register_Florence2ModelLoaderMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    class Florence2ModelLoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {"required": {
-                "model": ([item.name for item in Path(folder_paths.models_dir, "LLM").iterdir() if item.is_dir()],
-                         {"tooltip": "models are expected to be in Comfyui/models/LLM folder"}),
-                "precision": (['fp16','bf16','fp32'],),
-                "attention": (['flash_attention_2', 'sdpa', 'eager'], {"default": 'sdpa'}),
-            },
-            "optional": {
-                "lora": ("PEFTLORA",),
-            }}
-
-        RETURN_TYPES = ("FL2MODEL",)
-        RETURN_NAMES = ("florence2_model",)
-        FUNCTION = "loadmodel"
-        CATEGORY = "Florence2"
-
-        def loadmodel(self, model, precision, attention, lora=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["Florence2ModelLoader"]()
-            return original_loader.loadmodel(model, precision, attention, lora)
-    NODE_CLASS_MAPPINGS["Florence2ModelLoaderMultiGPU"] = override_class(Florence2ModelLoader)
-    logging.info(f"MultiGPU: Registered Florence2ModelLoaderMultiGPU")
-
-def register_DownloadAndLoadFlorence2ModelMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    class DownloadAndLoadFlorence2Model:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {"required": {
-                "model": ([
-                    'microsoft/Florence-2-base',
-                    'microsoft/Florence-2-base-ft',
-                    'microsoft/Florence-2-large',
-                    'microsoft/Florence-2-large-ft',
-                    'HuggingFaceM4/Florence-2-DocVQA',
-                    'thwri/CogFlorence-2.1-Large',
-                    'thwri/CogFlorence-2.2-Large',
-                    'gokaygokay/Florence-2-SD3-Captioner',
-                    'gokaygokay/Florence-2-Flux-Large',
-                    'MiaoshouAI/Florence-2-base-PromptGen-v1.5',
-                    'MiaoshouAI/Florence-2-large-PromptGen-v1.5',
-                    'MiaoshouAI/Florence-2-base-PromptGen-v2.0',
-                    'MiaoshouAI/Florence-2-large-PromptGen-v2.0'
-                ], {"default": 'microsoft/Florence-2-base'}),
-                "precision": (['fp16','bf16','fp32'], {"default": 'fp16'}),
-                "attention": (['flash_attention_2', 'sdpa', 'eager'], {"default": 'sdpa'}),
-            },
-            "optional": {
-                "lora": ("PEFTLORA",),
-            }}
-
-        RETURN_TYPES = ("FL2MODEL",)
-        RETURN_NAMES = ("florence2_model",)
-        FUNCTION = "loadmodel"
-        CATEGORY = "Florence2"
-
-        def loadmodel(self, model, precision, attention, lora=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["DownloadAndLoadFlorence2Model"]()
-            return original_loader.loadmodel(model, precision, attention, lora)
-    NODE_CLASS_MAPPINGS["DownloadAndLoadFlorence2ModelMultiGPU"] = override_class(DownloadAndLoadFlorence2Model)
-    logging.info(f"MultiGPU: Registered DownloadAndLoadFlorence2ModelMultiGPU")
-
-def register_CheckpointLoaderNF4():
-    global NODE_CLASS_MAPPINGS
-
-    class CheckpointLoaderNF4:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {"required": { "ckpt_name": (folder_paths.get_filename_list("checkpoints"), ),
-                                }}
-        RETURN_TYPES = ("MODEL", "CLIP", "VAE")
-        FUNCTION = "load_checkpoint"
-
-        CATEGORY = "loaders"
-
-
-        def load_checkpoint(self, ckpt_name):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["CheckpointLoaderNF4"]()
-            return original_loader.load_checkpoint(ckpt_name)
-
-    NODE_CLASS_MAPPINGS["CheckpointLoaderNF4MultiGPU"] = override_class(CheckpointLoaderNF4)
-    logging.info(f"MultiGPU: Registered CheckpointLoaderNF4MultiGPU")
-
-def register_LoadFluxControlNetMultiGPU():
-    global NODE_CLASS_MAPPINGS
-
-    class LoadFluxControlNet:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {"required": {"model_name": (["flux-dev", "flux-dev-fp8", "flux-schnell"],),
-                                "controlnet_path": (folder_paths.get_filename_list("xlabs_controlnets"), ),
-                                }}
-
-        RETURN_TYPES = ("FluxControlNet",)
-        RETURN_NAMES = ("ControlNet",)
-        FUNCTION = "loadmodel"
-        CATEGORY = "XLabsNodes"
-
-        def loadmodel(self, model_name, controlnet_path):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["LoadFluxControlNet"]()
-            return original_loader.loadmodel(model_name, controlnet_path)
-
-    NODE_CLASS_MAPPINGS["LoadFluxControlNetMultiGPU"] = override_class(LoadFluxControlNet)
-    logging.info(f"MultiGPU: Registered LoadFluxControlNetMultiGPU")
-
-def register_MMAudioModelLoaderMultiGPU():
-
-    global NODE_CLASS_MAPPINGS
-
-    class MMAudioModelLoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "mmaudio_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from the 'ComfyUI/models/mmaudio' -folder",}),
-
-                "base_precision": (["fp16", "fp32", "bf16"], {"default": "fp16"}),
-                },
-            }
-
-        RETURN_TYPES = ("MMAUDIO_MODEL",)
-        RETURN_NAMES = ("mmaudio_model", )
-        FUNCTION = "loadmodel"
-        CATEGORY = "MMAudio"
-
-        def loadmodel(self, mmaudio_model, base_precision):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["MMAudioModelLoader"]()
-            return original_loader.loadmodel(mmaudio_model, base_precision)
-
-    NODE_CLASS_MAPPINGS["MMAudioModelLoaderMultiGPU"] = override_class(MMAudioModelLoader)
-    logging.info(f"MultiGPU: Registered MMAudioModelLoaderMultiGPU")
-
-def register_MMAudioFeatureUtilsLoaderMultiGPU():
-
-    global NODE_CLASS_MAPPINGS
-
-
-    class MMAudioFeatureUtilsLoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "vae_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from 'ComfyUI/models/mmaudio'"}),
-                    "synchformer_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from 'ComfyUI/models/mmaudio'"}),
-                    "clip_model": (folder_paths.get_filename_list("mmaudio"), {"tooltip": "These models are loaded from 'ComfyUI/models/mmaudio'"}),
-                },
-                "optional": {
-                "bigvgan_vocoder_model": ("VOCODER_MODEL", {"tooltip": "These models are loaded from 'ComfyUI/models/mmaudio'"}),
-                    "mode": (["16k", "44k"], {"default": "44k"}),
-                    "precision": (["fp16", "fp32", "bf16"],
-                        {"default": "fp16"}
-                    ),
-                }
-            }
-
-        RETURN_TYPES = ("MMAUDIO_FEATUREUTILS",)
-        RETURN_NAMES = ("mmaudio_featureutils", )
-        FUNCTION = "loadmodel"
-        CATEGORY = "MMAudio"
-
-        def loadmodel(self, vae_model, precision, synchformer_model, clip_model, mode, bigvgan_vocoder_model=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["MMAudioFeatureUtilsLoader"]()
-            return original_loader.loadmodel(vae_model, precision, synchformer_model, clip_model, mode, bigvgan_vocoder_model)
-
-    NODE_CLASS_MAPPINGS["MMAudioFeatureUtilsLoaderMultiGPU"] = override_class(MMAudioFeatureUtilsLoader)
-    logging.info(f"MultiGPU: Registered MMAudioFeatureUtilsLoaderMultiGPU")
-
-def register_MMAudioSamplerMultiGPU():
-
-    global NODE_CLASS_MAPPINGS
-
-    class MMAudioSampler:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "mmaudio_model": ("MMAUDIO_MODEL",),
-                    "feature_utils": ("MMAUDIO_FEATUREUTILS",),
-                    "duration": ("FLOAT", {"default": 8, "step": 0.01, "tooltip": "Duration of the audio in seconds"}),
-                    "steps": ("INT", {"default": 25, "step": 1, "tooltip": "Number of steps to interpolate"}),
-                    "cfg": ("FLOAT", {"default": 4.5, "step": 0.1, "tooltip": "Strength of the conditioning"}),
-                    "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                    "prompt": ("STRING", {"default": "", "multiline": True} ),
-                    "negative_prompt": ("STRING", {"default": "", "multiline": True} ),
-                    "mask_away_clip": ("BOOLEAN", {"default": False, "tooltip": "If true, the clip video will be masked away"}),
-                    "force_offload": ("BOOLEAN", {"default": True, "tooltip": "If true, the model will be offloaded to the offload device"}),
-                },
-                "optional": {
-                    "images": ("IMAGE",),
-                },
-            }
-
-        RETURN_TYPES = ("AUDIO",)
-        RETURN_NAMES = ("audio", )
-        FUNCTION = "sample"
-        CATEGORY = "MMAudio"
-
-        def sample(self, mmaudio_model, seed, feature_utils, duration, steps, cfg, prompt, negative_prompt, mask_away_clip, force_offload, images=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["MMAudioSampler"]()
-            return original_loader.sample(mmaudio_model, seed, feature_utils, duration, steps, cfg, prompt, negative_prompt, mask_away_clip, force_offload, images)
-
-    NODE_CLASS_MAPPINGS["MMAudioSamplerMultiGPU"] = override_class(MMAudioSampler)
-    logging.info(f"MultiGPU: Registered MMAudioSamplerMultiGPU")
-
-def register_PulidModelLoader():
-
-    global NODE_CLASS_MAPPINGS
-
-    class PulidModelLoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {"required": { "pulid_file": (folder_paths.get_filename_list("pulid"), )}}
-
-        RETURN_TYPES = ("PULID",)
-        FUNCTION = "load_model"
-        CATEGORY = "pulid"
-
-        def load_model(self, pulid_file):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["PulidModelLoader"]()
-            return original_loader.load_model(pulid_file)
-
-    NODE_CLASS_MAPPINGS["PulidModelLoaderMultiGPU"] = override_class(PulidModelLoader)
-    logging.info(f"MultiGPU: Registered PulidModelLoaderMultiGPU")
-
-def register_PulidInsightFaceLoader():
-
-    global NODE_CLASS_MAPPINGS
-
-    class PulidInsightFaceLoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "provider": (["CPU", "CUDA", "ROCM", "CoreML"], ),
-                },
-            }
-
-        RETURN_TYPES = ("FACEANALYSIS",)
-        FUNCTION = "load_insightface"
-        CATEGORY = "pulid"
-
-        def load_insightface(self, provider):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["PulidInsightFaceLoader"]()
-            return original_loader.load_insightface(provider)
-
-    NODE_CLASS_MAPPINGS["PulidInsightFaceLoaderMultiGPU"] = override_class(PulidInsightFaceLoader)
-    logging.info(f"MultiGPU: Registered PulidInsightFaceLoaderMultiGPU")
-
-def register_PulidEvaClipLoader():
-
-    global NODE_CLASS_MAPPINGS
-
-    class PulidEvaClipLoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {},
-            }
-
-        RETURN_TYPES = ("EVA_CLIP",)
-        FUNCTION = "load_eva_clip"
-        CATEGORY = "pulid"
-
-        def load_eva_clip(self):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["PulidEvaClipLoader"]()
-            return original_loader.load_eva_clip()
-
-    NODE_CLASS_MAPPINGS["PulidEvaClipLoaderMultiGPU"] = override_class(PulidEvaClipLoader)
-    logging.info(f"MultiGPU: Registered PulidEvaClipLoaderMultiGPU")
-
-def register_HyVideoModelLoader():
-    global NODE_CLASS_MAPPINGS
-
-    # Keep original MultiGPU wrapper unchanged
-    class HyVideoModelLoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "model": (folder_paths.get_filename_list("diffusion_models"), {"tooltip": "These models are loaded from the 'ComfyUI/models/diffusion_models' -folder",}),
-                    "base_precision": (["fp32", "bf16"], {"default": "bf16"}),
-                    "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'fp8_scaled', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6", "torchao_int4", "torchao_int8"], {"default": 'disabled', "tooltip": "optional quantization method"}),
-                    "load_device": (["main_device"], {"default": "main_device"}),
-                },
-                "optional": {
-                    "attention_mode": ([
-                        "sdpa",
-                        "flash_attn_varlen",
-                        "sageattn_varlen",
-                        "comfy",
-                    ], {"default": "flash_attn"}),
-                    "compile_args": ("COMPILEARGS", ),
-                    "block_swap_args": ("BLOCKSWAPARGS", ),
-                    "lora": ("HYVIDLORA", {"default": None}),
-                    "auto_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "Enable auto offloading for reduced VRAM usage, implementation from DiffSynth-Studio, slightly different from block swapping and uses even less VRAM, but can be slower as you can't define how much VRAM to use"}),
-                }
-            }
-
-        RETURN_TYPES = ("HYVIDEOMODEL",)
-        RETURN_NAMES = ("model", )
-        FUNCTION = "loadmodel"
-        CATEGORY = "HunyuanVideoWrapper"
-
-        def loadmodel(self, model, base_precision, load_device, quantization, compile_args=None, attention_mode="sdpa", block_swap_args=None, lora=None, auto_cpu_offload=False):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["HyVideoModelLoader"]()
-            return original_loader.loadmodel(model, base_precision, load_device, quantization, compile_args, attention_mode, block_swap_args, lora, auto_cpu_offload)
-
-    NODE_CLASS_MAPPINGS["HyVideoModelLoaderMultiGPU"] = override_class(HyVideoModelLoader)
-
-    logging.info(f"MultiGPU: Registered HyVideoModelLoader nodes")
-
-def register_HyVideoVAELoader():
-
-    global NODE_CLASS_MAPPINGS
-
-    class HyVideoVAELoader:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "model_name": (folder_paths.get_filename_list("vae"), {"tooltip": "These models are loaded from 'ComfyUI/models/vae'"}),
-                },
-                "optional": {
-                    "precision": (["fp16", "fp32", "bf16"],
-                        {"default": "bf16"}
-                    ),
-                    "compile_args":("COMPILEARGS", ),
-                }
-            }
-
-        RETURN_TYPES = ("VAE",)
-        RETURN_NAMES = ("vae", )
-        FUNCTION = "loadmodel"
-        CATEGORY = "HunyuanVideoWrapper"
-        DESCRIPTION = "Loads Hunyuan VAE model from 'ComfyUI/models/vae'"
-
-        def loadmodel(self, model_name, precision, compile_args=None):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["HyVideoVAELoader"]()
-            return original_loader.loadmodel(model_name, precision, compile_args)
-
-    NODE_CLASS_MAPPINGS["HyVideoVAELoaderMultiGPU"] = override_class(HyVideoVAELoader)
-    logging.info(f"MultiGPU: Registered HyVideoVAELoaderMultiGPU")
-
-def register_DownloadAndLoadHyVideoTextEncoder():
-
-    global NODE_CLASS_MAPPINGS
-
-    class DownloadAndLoadHyVideoTextEncoder:
-        @classmethod
-        def INPUT_TYPES(s):
-            return {
-                "required": {
-                    "llm_model": (["Kijai/llava-llama-3-8b-text-encoder-tokenizer","xtuner/llava-llama-3-8b-v1_1-transformers"],),
-                    "clip_model": (["disabled","openai/clip-vit-large-patch14",],),
-                    "precision": (["fp16", "fp32", "bf16"],
-                        {"default": "bf16"}
-                    ),
-                },
-                "optional": {
-                    "apply_final_norm": ("BOOLEAN", {"default": False}),
-                    "hidden_state_skip_layer": ("INT", {"default": 2}),
-                    "quantization": (['disabled', 'bnb_nf4', "fp8_e4m3fn"], {"default": 'disabled'}),
-                }
-            }
-
-        RETURN_TYPES = ("HYVIDTEXTENCODER",)
-        RETURN_NAMES = ("hyvid_text_encoder", )
-        FUNCTION = "loadmodel"
-        CATEGORY = "HunyuanVideoWrapper"
-        DESCRIPTION = "Loads Hunyuan text_encoder model from 'ComfyUI/models/LLM'"
-
-        def loadmodel(self, llm_model, clip_model, precision,  apply_final_norm=False, hidden_state_skip_layer=2, quantization="disabled"):
-            from nodes import NODE_CLASS_MAPPINGS
-            original_loader = NODE_CLASS_MAPPINGS["DownloadAndLoadHyVideoTextEncoder"]()
-            return original_loader.loadmodel(llm_model, clip_model, precision, apply_final_norm, hidden_state_skip_layer, quantization)
-
-    NODE_CLASS_MAPPINGS["DownloadAndLoadHyVideoTextEncoderMultiGPU"] = override_class(DownloadAndLoadHyVideoTextEncoder)
-    logging.info(f"MultiGPU: Registered DownloadAndLoadHyVideoTextEncoderMultiGPU")
-
-# Register desired nodes
-register_module(["UNETLoader", "VAELoader", "CLIPLoader", "DualCLIPLoader", "TripleCLIPLoader", "CheckpointLoaderSimple", "ControlNetLoader"])
-if check_module_exists("ComfyUI-LTXVideo") or check_module_exists("comfyui-ltxvideo"):
-    register_LTXVLoaderMultiGPU()
 if check_module_exists("ComfyUI-Florence2") or check_module_exists("comfyui-florence2"):
-    register_Florence2ModelLoaderMultiGPU()
-    register_DownloadAndLoadFlorence2ModelMultiGPU()
-if check_module_exists("ComfyUI_bitsandbytes_NF4") or check_module_exists("comfyui_bitsandbytes_nf4"):
-    register_CheckpointLoaderNF4()
-if check_module_exists("x-flux-comfyui") or check_module_exists("x-flux-comfyui"):
-    register_LoadFluxControlNetMultiGPU()
-if check_module_exists("ComfyUI-MMAudio") or check_module_exists("comfyui-mmaudio"):
-    register_MMAudioModelLoaderMultiGPU()
-    register_MMAudioFeatureUtilsLoaderMultiGPU()
-    register_MMAudioSamplerMultiGPU()
-if check_module_exists("ComfyUI-GGUF") or check_module_exists("comfyui-gguf"):
-    register_UnetLoaderGGUFMultiGPU()
-    register_CLIPLoaderGGUFMultiGPU()
-if check_module_exists("PuLID_ComfyUI") or check_module_exists("pulid_comfyui"):
-    register_PulidModelLoader()
-    register_PulidInsightFaceLoader()
-    register_PulidEvaClipLoader()
-if check_module_exists("ComfyUI-HunyuanVideoWrapper") or check_module_exists("comfyui-hunyuanvideowrapper"):
-    register_HyVideoModelLoader()
-    register_HyVideoVAELoader()
-    register_DownloadAndLoadHyVideoTextEncoder()
+    NODE_CLASS_MAPPINGS["Florence2ModelLoaderMultiGPU"] = override_class(Florence2ModelLoader)
+    NODE_CLASS_MAPPINGS["DownloadAndLoadFlorence2ModelMultiGPU"] = override_class(DownloadAndLoadFlorence2Model)
 
+if check_module_exists("ComfyUI_bitsandbytes_NF4") or check_module_exists("comfyui_bitsandbytes_nf4"):
+    NODE_CLASS_MAPPINGS["CheckpointLoaderNF4MultiGPU"] = override_class(CheckpointLoaderNF4)
+
+if check_module_exists("x-flux-comfyui") or check_module_exists("x-flux-comfyui"):
+    NODE_CLASS_MAPPINGS["LoadFluxControlNetMultiGPU"] = override_class(LoadFluxControlNet)
+
+if check_module_exists("ComfyUI-MMAudio") or check_module_exists("comfyui-mmaudio"):
+    NODE_CLASS_MAPPINGS["MMAudioModelLoaderMultiGPU"] = override_class(MMAudioModelLoader)
+    NODE_CLASS_MAPPINGS["MMAudioFeatureUtilsLoaderMultiGPU"] = override_class(MMAudioFeatureUtilsLoader)
+    NODE_CLASS_MAPPINGS["MMAudioSamplerMultiGPU"] = override_class(MMAudioSampler)
+
+if check_module_exists("ComfyUI-GGUF") or check_module_exists("comfyui-gguf"):
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFMultiGPU"] = override_class(UnetLoaderGGUF)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch(UnetLoaderGGUF)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedMultiGPU"] = override_class(UnetLoaderGGUFAdvanced)
+    NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedDisTorchMultiGPU"] = override_class_with_distorch(UnetLoaderGGUFAdvanced)
+    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFMultiGPU"] = override_class(CLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch(CLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFMultiGPU"] = override_class(DualCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch(DualCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFMultiGPU"] = override_class(TripleCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch(TripleCLIPLoaderGGUF)
+
+if check_module_exists("PuLID_ComfyUI") or check_module_exists("pulid_comfyui"):
+    NODE_CLASS_MAPPINGS["PulidModelLoaderMultiGPU"] = override_class(PulidModelLoader)
+    NODE_CLASS_MAPPINGS["PulidInsightFaceLoaderMultiGPU"] = override_class(PulidInsightFaceLoader)
+    NODE_CLASS_MAPPINGS["PulidEvaClipLoaderMultiGPU"] = override_class(PulidEvaClipLoader)
+
+if check_module_exists("ComfyUI-HunyuanVideoWrapper") or check_module_exists("comfyui-hunyuanvideowrapper"):
+    NODE_CLASS_MAPPINGS["HyVideoModelLoaderMultiGPU"] = override_class(HyVideoModelLoader)
+    NODE_CLASS_MAPPINGS["HyVideoVAELoaderMultiGPU"] = override_class(HyVideoVAELoader)
+    NODE_CLASS_MAPPINGS["DownloadAndLoadHyVideoTextEncoderMultiGPU"] = override_class(DownloadAndLoadHyVideoTextEncoder)
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")

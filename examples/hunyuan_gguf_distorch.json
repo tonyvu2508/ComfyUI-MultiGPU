@@ -1,6 +1,6 @@
 {
-  "last_node_id": 119,
-  "last_link_id": 155,
+  "last_node_id": 120,
+  "last_link_id": 156,
   "nodes": [
     {
       "id": 72,
@@ -14,7 +14,7 @@
         58
       ],
       "flags": {},
-      "order": 11,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -55,7 +55,7 @@
         58
       ],
       "flags": {},
-      "order": 9,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -93,7 +93,7 @@
         150
       ],
       "flags": {},
-      "order": 14,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -128,76 +128,6 @@
       ]
     },
     {
-      "id": 75,
-      "type": "SamplerCustomAdvanced",
-      "pos": [
-        3488.497314453125,
-        -150.8239288330078
-      ],
-      "size": [
-        292.4319763183594,
-        479.03521728515625
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 13,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "noise",
-          "type": "NOISE",
-          "link": 87,
-          "slot_index": 0
-        },
-        {
-          "name": "guider",
-          "type": "GUIDER",
-          "link": 88,
-          "slot_index": 1
-        },
-        {
-          "name": "sampler",
-          "type": "SAMPLER",
-          "link": 89,
-          "slot_index": 2
-        },
-        {
-          "name": "sigmas",
-          "type": "SIGMAS",
-          "link": 90,
-          "slot_index": 3
-        },
-        {
-          "name": "latent_image",
-          "type": "LATENT",
-          "link": 155,
-          "slot_index": 4
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output",
-          "type": "LATENT",
-          "links": [
-            85
-          ],
-          "slot_index": 0,
-          "shape": 3
-        },
-        {
-          "name": "denoised_output",
-          "type": "LATENT",
-          "links": null,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "SamplerCustomAdvanced"
-      },
-      "widgets_values": []
-    },
-    {
       "id": 66,
       "type": "BasicScheduler",
       "pos": [
@@ -209,7 +139,7 @@
         109.8011474609375
       ],
       "flags": {},
-      "order": 10,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -271,41 +201,6 @@
       ]
     },
     {
-      "id": 76,
-      "type": "VAELoaderMultiGPU",
-      "pos": [
-        2629.39599609375,
-        275.80596923828125
-      ],
-      "size": [
-        341.07464599609375,
-        87.14057922363281
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "VAE",
-          "type": "VAE",
-          "links": [
-            99
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAELoaderMultiGPU"
-      },
-      "widgets_values": [
-        "hunyuan_video_vae_bf16.safetensors",
-        "cuda:1"
-      ],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
       "id": 115,
       "type": "EmptyHunyuanLatentVideo",
       "pos": [
@@ -319,7 +214,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -354,7 +249,7 @@
         190.77996826171875
       ],
       "flags": {},
-      "order": 3,
+      "order": 2,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -378,7 +273,7 @@
         82
       ],
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -413,7 +308,7 @@
         902.6787109375
       ],
       "flags": {},
-      "order": 15,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -465,13 +360,13 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "HunyuanVideo_00315.mp4",
+            "filename": "HunyuanVideo_00336.mp4",
             "subfolder": "",
             "type": "output",
             "format": "video/h264-mp4",
             "frame_rate": 24,
-            "workflow": "HunyuanVideo_00315.png",
-            "fullpath": "/home/johnj/ComfyUI/output/HunyuanVideo_00315.mp4"
+            "workflow": "HunyuanVideo_00336.png",
+            "fullpath": "/home/johnj/ComfyUI/output/HunyuanVideo_00336.mp4"
           },
           "muted": false
         }
@@ -491,7 +386,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 12,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -524,30 +419,6 @@
       "widgets_values": []
     },
     {
-      "id": 119,
-      "type": "Note",
-      "pos": [
-        2050.9873046875,
-        -145.64498901367188
-      ],
-      "size": [
-        549.7151489257812,
-        528.065185546875
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "How the DisTorch allocation string works",
-      "properties": {},
-      "widgets_values": [
-        "The allocation string uses a semicolon (;) to separate device allocations, and each device allocation has two parts separated by a comma:\n\nDevice name (e.g., \"cuda:0\", \"cuda:1\", \"cpu\")\nMemory fraction as a decimal (e.g., 0.025 = 2.5%, 0.05 = 5%, 0.10 = 10%)\n\n\nFor my defaults:\n\nCUDA GPU 0: Will allocate 2.5% of its total available memory\nCUDA GPU 1: Will allocate 5% of its total available memory\nCPU: Will allocate 10% of available system memory\n\n\nDisTorch then:\n\nCalculates how much actual memory this means for each device\nDistributes model layers across devices proportionally based on these allocations\nAssigns layers to minimize memory usage while maintaining model functionality\n\n\n\nSo if you have a model with 100 layers and your GPUs have the following memory:\n\nCUDA:0 has 24GB\nCUDA:1 has 24GB\nSystem has 64GB RAM\n\nThe allocation would be:\n\nCUDA:0: 600MB (2.5% of 24GB)\nCUDA:1: 1.2GB (5% of 24GB)\nCPU: 6.4GB (10% of 64GB)\n\nThis would help manage memory usage across your devices while keeping the model functional. The semicolon-separated format makes it easy to specify different allocations for different devices in a single string."
-      ],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
       "id": 67,
       "type": "CLIPTextEncode",
       "pos": [
@@ -559,13 +430,13 @@
         164.31304931640625
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 154
+          "link": 156
         }
       ],
       "outputs": [
@@ -589,56 +460,123 @@
       "bgcolor": "#353"
     },
     {
-      "id": 100,
-      "type": "DualCLIPLoaderGGUFDisTorchMultiGPU",
+      "id": 76,
+      "type": "VAELoaderMultiGPU",
       "pos": [
-        2623.7119140625,
-        64.39619445800781
+        2632.252685546875,
+        327.2115783691406
       ],
       "size": [
-        348.5331726074219,
-        154
+        341.07464599609375,
+        87.14057922363281
       ],
       "flags": {},
-      "order": 6,
+      "order": 4,
       "mode": 0,
       "inputs": [],
       "outputs": [
         {
-          "name": "CLIP",
-          "type": "CLIP",
+          "name": "VAE",
+          "type": "VAE",
           "links": [
-            154
+            99
           ],
           "slot_index": 0
         }
       ],
       "properties": {
-        "Node name for S&R": "DualCLIPLoaderGGUFDisTorchMultiGPU"
+        "Node name for S&R": "VAELoaderMultiGPU"
       },
       "widgets_values": [
-        "clip_l.safetensors",
-        "llava-llama-3-8B-v1_1-Q4_K_M.gguf",
-        "hunyuan_video",
-        "cuda:1",
-        "cuda:1,0.33;cpu,0.15"
+        "hunyuan_video_vae_bf16.safetensors",
+        "cuda:1"
       ],
       "color": "#233",
       "bgcolor": "#355"
     },
     {
+      "id": 75,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        3517.626953125,
+        -117.69574737548828
+      ],
+      "size": [
+        292.4319763183594,
+        479.03521728515625
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 87,
+          "slot_index": 0
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 88,
+          "slot_index": 1
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 89,
+          "slot_index": 2
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 90,
+          "slot_index": 3
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 155,
+          "slot_index": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            85
+          ],
+          "slot_index": 0,
+          "shape": 3
+        },
+        {
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "widgets_values": []
+    },
+    {
       "id": 88,
       "type": "UnetLoaderGGUFDisTorchMultiGPU",
       "pos": [
-        2622.552734375,
-        -105.02156829833984
+        2624.267822265625,
+        -66.1816177368164
       ],
       "size": [
         358.005859375,
-        128.5614013671875
+        154
       ],
       "flags": {},
-      "order": 7,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -656,9 +594,48 @@
         "Node name for S&R": "UnetLoaderGGUFDisTorchMultiGPU"
       },
       "widgets_values": [
-        "flux1-dev-Q8_0.gguf",
+        "hunyuan-video-t2v-720p-Q8_0.gguf",
         "cuda:0",
-        "cuda:0,0.33;cuda:1,0.33;cpu,0.0825"
+        8,
+        false,
+        ""
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 120,
+      "type": "DualCLIPLoaderGGUFMultiGPU",
+      "pos": [
+        2625.07763671875,
+        132.1048126220703
+      ],
+      "size": [
+        348.16229248046875,
+        130
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            156
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DualCLIPLoaderGGUFMultiGPU"
+      },
+      "widgets_values": [
+        "clip_l.safetensors",
+        "llava-llama-3-8B-v1_1-Q4_K_M.gguf",
+        "hunyuan_video",
+        "cpu"
       ],
       "color": "#233",
       "bgcolor": "#355"
@@ -762,20 +739,20 @@
       "MODEL"
     ],
     [
-      154,
-      100,
-      0,
-      67,
-      0,
-      "CLIP"
-    ],
-    [
       155,
       115,
       0,
       75,
       4,
       "LATENT"
+    ],
+    [
+      156,
+      120,
+      0,
+      67,
+      0,
+      "CLIP"
     ]
   ],
   "groups": [
@@ -783,8 +760,8 @@
       "id": 1,
       "title": "GGUFDisTorchMultiGPU",
       "bounding": [
-        2617.71240234375,
-        -173.0873565673828,
+        2620.569091796875,
+        -121.6815185546875,
         360.4816589355469,
         537.903076171875
       ],
@@ -796,15 +773,17 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1.283902517749697,
+      "scale": 1.167184107045179,
       "offset": [
-        -2107.057728768135,
-        344.093734201536
+        -2360.0515813693187,
+        465.0591039206934
       ]
     },
     "ue_links": [],
     "VHS_latentpreview": false,
-    "VHS_latentpreviewrate": 0
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
   },
   "version": 0.4
 }

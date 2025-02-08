@@ -1,5 +1,12 @@
 # ComfyUI-MultiGPU
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/pollockjj/ComfyUI-MultiGPU/main/assets/distorch_average.png" width="600">
+  <br>
+  <em>Add Virtual VRAM and unleash the power of all of your latent space</em>
+</p>
+
+
 ## Device selection and model offloading tools for ComfyUI workloads that exceed single GPU capacity
 
 This extension empowers users to spread model components across multiple GPUs or offload to CPU in a single ComfyUI workflow. Aimed at complex workloads that would normally require sequential model loading/unloading:
@@ -12,15 +19,61 @@ This extension empowers users to spread model components across multiple GPUs or
 
 **Note:** This enhances memory management, not parallelism. Workflow steps execute sequentially but with components, or in the case of GGUF files `GGML` layers, loaded across your specified devices. *Performance gains* come from avoiding repeated model loading/unloading when VRAM is constrained. *Capability gains* come from offloading as much of the model (VAE/CLIP/UNet) off of your main `compute` device, allowing you to maximize the amount of latent space available for `compute`
 
-# NEW: DisTorch - Advanced GGUF-Quantized Model Layer Distribution
+<h1 align="center">**NEW** DisTorch 2.0: Virtual VRAM Made Simple</h1>
 
-DisTorch nodes are now available, allowing fine-grained control over model layer distribution across multiple devices for GGUF quantized models. Using a simple allocation string (e.g., "cuda:0,0.025;cuda:1,0.05;cpu,0.10"), you can precisely specify how much memory each device should contribute to hosting model layers. This enables sophisticated memory management strategies like:
+<p align="center">
+  <img src="https://raw.githubusercontent.com/pollockjj/ComfyUI-MultiGPU/main/assets/distorch2_0.gif" width="800">
+  <br>
+  <em>DisTorch 2.0 in Action</em>
+</p>
 
-- Splitting large models across multiple GPUs with different VRAM capacities
-- Utilizing CPU memory alongside GPU VRAM for handling memory-intensive models
-- Optimizing layer placement based on your specific hardware configuration
 
-Check out the updated examples `hunyuan_ip2v_distorch_gguf.json`, `hunyuan_gguf_distorch.json`, and `flux1dev_gguf_distorch.json` to see DisTorch in action, demonstrating advanced layer distribution across multiple devices including adapting kijai's `HunyuanVideo TextImageEncode (IP2V)` node for the native HunyuanVideo sampler in Comfy Core - meaning HunyuanVideo with IP2V has come to GGUFs! 
+
+## What's New?
+DisTorch now features simple Virtual VRAM control that lets you offload model layers from your GPU with zero configuration. Just set how much VRAM you want to free up, and DisTorch handles the rest.
+
+## How It Works
+- **Virtual VRAM**: Defaults to 4GB - just adjust it based on your needs
+- **Two Modes**:
+  - **Default**: Offloads to system RAM
+  - **Multi-GPU**: Distributes across other GPUs (optional)
+
+## 🎯 Key Benefits
+- Free up GPU VRAM instantly without complex settings
+- Run larger models by offloading layers to other system RAM
+- Use all your main GPU's VRAM for actual `compute` / latent processing
+- Seamlessly distribute GGML layers across multiple GPUs if available
+- Allows **you** to easily shift from ___on-device speed___ to ___open-device capability___ with a simple one-number change
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/pollockjj/ComfyUI-MultiGPU/main/assets/distorch_node.png" width="400">
+  <br>
+  <em>DisTorch 2.0 Node with one simple number to tune its Vitual VRAM to your needs</em>
+</p>
+
+## 💡 Quick Start
+1. Load any GGUF model using a DisTorch node
+2. Set your Virtual VRAM amount (default: 4GB, in this example we chose 8GB)
+3. Toggle "Use Other VRAM" if you have multiple GPUs[^1]
+4. That's it!
+[^1]:  DisTorch's Virtual VRAM aims to span as few a devices as possible. I recommend users try both ways (VRAM/DRAM) and see which works best for you.
+
+## 🔄 Real-World Example
+With a 12GB GPU running an 8GB model:
+- Set Virtual VRAM to 4GB
+- DisTorch moves 4GB of model layers to RAM
+- Your GPU now has extra VRAM for larger batches, higher resolutions, or longer video
+
+## 🚀 Compatibility
+Works with all GGUF-quantized ComfyUI/ComfyUI-GGUF-supported UNet/CLIP models.
+
+⚙️ Expert users: For those of you who were here for the 1.0 release of DisTorch, manual allocation strings still available for advanced configurations. Each log will contain the allocation string for the run so it can be easily recreated and/or manipulated for more sophisticated setups.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/pollockjj/ComfyUI-MultiGPU/main/assets/distorch2_0.png" width="300">
+  <br>
+  <em>The new Virtual VRAM even lets you offload ALL of the model and still run compute on your CUDA device!</em>
+</p>
 
 ## Installation
 
@@ -84,11 +137,6 @@ This workflow attaches a HunyuanVideo GGUF-quantized model on `cuda:0` for compu
 
 - [examples/flux1dev_gguf_distorch.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/flux1dev_gguf_distorch.json)
 This workflow loads a FLUX.1-dev model on `cuda:0` for compute and distrubutes its UNet across multiple CUDA devices using new DisTorch distributed-load methodology. While the text encoders and VAE are loaded on GPU 1 and use `cuda:1` for compute.
-
-### Split Hunyuan Video UNet across two devices and use DiffSynth Just-in-Time loading
-
-- [examples/hunyuanvideowrapper_diffsynth.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/hunyuanvideowrapper_diffsynth.json)
-This workflow demonstrates DiffSynth's memory optimization strategy enabled in kijai's `ComfyUI-HunyuanVideoWrapper` UNet loader, splitting the UNet model across two CUDA devices using block-swapping. The main device handles active computations while blocks are swapped to and from the offload device as needed. As written, the CLIP loads on cuda:0 and then offloads, and the VAE is loaded after the UNet model has been cleared from memory after generation. This approach enables processing of higher resolution or longer duration videos that would exceed a single GPU's memory capacity, though at the cost of additional processing time. Note that an initial OOM error is expected as the workflow calibrates its memory management strategy - simply run the generation again with the same parameters.
 
 ### Split Hunyuan Video generation across multiple resources
 
