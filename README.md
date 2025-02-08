@@ -69,13 +69,12 @@ Works with all GGUF-quantized ComfyUI/ComfyUI-GGUF-supported UNet/CLIP models.
 
 ⚙️ Expert users: For those of you who were here for the 1.0 release of DisTorch, manual allocation strings still available for advanced configurations. Each log will contain the allocation string for the run so it can be easily recreated and/or manipulated for more sophisticated setups.
 
-
-
 <p align="center">
   <img src="https://raw.githubusercontent.com/pollockjj/ComfyUI-MultiGPU/main/assets/distorch2_0.png" width="300">
   <br>
   <em>The new Virtual VRAM even lets you offload ALL of the model and still run compute on your CUDA device!</em>
 </p>
+
 ## Installation
 
 Installation via [ComfyUI-Manager](https://github.com/ltdrdata/ComfyUI-Manager) is preferred. Simply search for `ComfyUI-MultiGPU` in the list of nodes and follow installation instructions.
