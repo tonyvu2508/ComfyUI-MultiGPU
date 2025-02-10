@@ -199,7 +199,7 @@ This workflow loads a GGUF version of FLUX.1-dev onto a cuda device and the T5 C
 - [examples/llamacpp_ltxv_2gpu_GGUF.json](https://github.com/pollockjj/ComfyUI-MultiGPU/blob/main/examples/llamacpp_ltxv_2gpu_GGUF.json)
 This workflow demonstrates:
 
-1. Using a local LLM (loaded on first GPU via llama.cpp) to take a text suggestion and craft an LTX Video promot
+1. Using a local LLM (loaded on first GPU via llama.cpp) to take a text suggestion and craft an LTX Video prompt
 2. Feeding the enhanced prompt to LTXVideo (loaded on second GPU) for video generation
 Requires appropriate LLM. Requires [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF).
 
