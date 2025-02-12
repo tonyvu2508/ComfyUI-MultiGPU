@@ -1,22 +1,33 @@
-# ComfyUI-MultiGPU
-
+# ComfyUI-MultiGPU: Tools to free up your primary GPU’s VRAM by using your CPU or additional GPUs[^1]
 <p align="center">
   <img src="https://raw.githubusercontent.com/pollockjj/ComfyUI-MultiGPU/main/assets/distorch_average.png" width="600">
   <br>
-  <em>Add Virtual VRAM and unleash the power of all of your latent space</em>
+  <em>Free almost all of your GPU for what matters: Maximum latent space processing</em>
 </p>
 
-## Device selection and model offloading tools for ComfyUI workloads that exceed single GPU capacity
+## The Core of ComfyUI-MultiGPU:
+[^1]: This **enhances memory management,** not parallel processing. Workflow steps still execute sequentially, but with components (in full or in part) loaded across your specified devices. *Performance gains* come from avoiding repeated model loading/unloading when VRAM is constrained. *Capability gains* come from offloading as much of the model (VAE/CLIP/UNet) off of your main **compute** device as possible—allowing you to maximize latent space for actual computation.
 
-This extension empowers users to spread model components across multiple GPUs or offload to CPU in a single ComfyUI workflow. Aimed at complex workloads that would normally require sequential model loading/unloading:
+1. **DisTorch Virtual VRAM for UNet Loaders**: Move UNet layers off your compute GPU  
+   - Automatic distribution to RAM or other GPUs  
+   - One-number control of VRAM usage  
+   - Support for all GGUF models  
 
-- Full control over model placement
-- Support for all major model loader nodes
-- NEW! GGUF UNet and CLIP model-splitting across cpu/gpus using new DisTorch nodes.
+2. **CLIP Offloading**: Two solutions for LLM-based and standard CLIP models:  
+   - **MultiGPU CLIP**: Full offload to CPU or secondary GPU  
+     - Works for all CLIP models, including Single-, Dual-, and Triple-CLIP loaders and their GGUF variants  
+   - **DisTorch Virtual VRAM CLIP**: Layer distribution for LLM-based CLIP (T5/llava-llama)  
+     - Keeps compute on the main GPU for faster processing than a full offload  
 
-*EXPERIMENTAL: This extension modifies ComfyUI's memory management behavior. While functional for standard GPU and CPU configurations, edge cases may exist. Use at your own risk.*
+3. **MultiGPU VAE**: Move VAE processing wherever you need it  
+   - CPU or secondary GPU options  
+   - Compatible with all major VAE types  
+   - Flexible decode location  
 
-**Note:** This enhances memory management, not parallelism. Workflow steps execute sequentially but with components, or in the case of GGUF files `GGML` layers, loaded across your specified devices. *Performance gains* come from avoiding repeated model loading/unloading when VRAM is constrained. *Capability gains* come from offloading as much of the model (VAE/CLIP/UNet) off of your main `compute` device, allowing you to maximize the amount of latent space available for `compute`
+**All components work together to maximize** your GPU’s available VRAM for latent space and efficient `compute`. The `custom_node` achieves this by modifying only **two** functions—one from **ComfyUI core** to make loaders “device-aware,” and the other from [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) to allocate `GGML` layers for **UNet or CLIP** GGUF-quantized models.[^2]
+
+[^2]: This custom_node modifies ComfyUI’s memory management behavior **only** while it is active. It does **not** alter Comfy core or ComfyUI-GGUF code on disk. When removed, ComfyUI reverts to normal. While functional for standard GPU and CPU configurations, edge cases may exist. You can crash your Comfy system if you use this node recklessly.
+
 
 <h1 align="center">**NEW** DisTorch 2.0: Virtual VRAM Made Simple</h1>
 
@@ -51,9 +62,9 @@ DisTorch now features simple Virtual VRAM control that lets you offload model la
 ## 💡 Quick Start
 1. Load any GGUF model using a DisTorch node
 2. Set your Virtual VRAM amount (default: 4GB, in this example we chose 8GB)
-3. Toggle "Use Other VRAM" if you have multiple GPUs[^1]
+3. Toggle "Use Other VRAM" if you have multiple GPUs[^3]
 4. That's it!
-[^1]:  DisTorch's Virtual VRAM aims to span as few a devices as possible. I recommend users try both ways (VRAM/DRAM) and see which works best for you.
+[^3]:  DisTorch's Virtual VRAM aims to span as few a devices as possible. I recommend users try both ways (VRAM/DRAM) and see which works best for you.
 
 ## 🔄 Real-World Example
 With a 12GB GPU running an 8GB model:
