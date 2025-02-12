@@ -31,6 +31,7 @@ from .nodes import (
 )
 
 current_device = mm.get_torch_device()
+current_text_encoder_device = mm.text_encoder_device()
 model_allocation_store = {}
 
 def get_torch_device_patched():
@@ -41,7 +42,17 @@ def get_torch_device_patched():
         device = torch.device(current_device)
     return device
 
+def text_encoder_device_patched():
+    device = None
+    if (not torch.cuda.is_available() or mm.cpu_state == mm.CPUState.CPU or "cpu" in str(current_text_encoder_device).lower()):
+        device = torch.device("cpu")
+    else:
+        device = torch.device(current_text_encoder_device)
+    return device
+
 mm.get_torch_device = get_torch_device_patched
+mm.text_encoder_device = text_encoder_device_patched
+
 
 def create_model_hash(model, caller):
 
@@ -524,6 +535,30 @@ def override_class(cls):
 
     return NodeOverride
 
+def override_class_clip(cls):
+    class NodeOverride(cls):
+        @classmethod
+        def INPUT_TYPES(s):
+            inputs = copy.deepcopy(cls.INPUT_TYPES())
+            devices = get_device_list()
+            default_device = devices[1] if len(devices) > 1 else devices[0]
+            inputs["optional"] = inputs.get("optional", {})
+            inputs["optional"]["device"] = (devices, {"default": default_device})
+            return inputs
+
+        CATEGORY = "multigpu"
+        FUNCTION = "override"
+
+        def override(self, *args, device=None, **kwargs):
+            global current_text_encoder_device
+            if device is not None:
+                current_text_encoder_device = device
+            fn = getattr(super(), cls.FUNCTION)
+            out = fn(*args, **kwargs)
+            return out
+
+    return NodeOverride
+
 def override_class_with_distorch(cls):
     class NodeOverrideDisTorch(cls):
         @classmethod
@@ -580,6 +615,62 @@ def override_class_with_distorch(cls):
 
     return NodeOverrideDisTorch
 
+def override_class_with_distorch_clip(cls):
+    class NodeOverrideDisTorch(cls):
+        @classmethod
+        def INPUT_TYPES(s):
+            inputs = copy.deepcopy(cls.INPUT_TYPES())
+            devices = get_device_list()
+            default_device = devices[1] if len(devices) > 1 else devices[0]
+            inputs["optional"] = inputs.get("optional", {})
+            inputs["optional"]["device"] = (devices, {"default": default_device})
+            inputs["optional"]["virtual_vram_gb"] = ("FLOAT", {"default": 4.0, "min": 0.0, "max": 24.0, "step": 0.1})
+            inputs["optional"]["use_other_vram"] = ("BOOLEAN", {"default": False})
+            inputs["optional"]["expert_mode_allocations"] = ("STRING", {
+                "multiline": False, 
+                "default": "",
+                "tooltip": "Expert use only: Manual VRAM allocation string. Incorrect values can cause crashes. Do not modify unless you fully understand DisTorch memory management."
+            })
+            return inputs
+
+        CATEGORY = "multigpu"
+        FUNCTION = "override"
+
+        def override(self, *args, device=None, expert_mode_allocations=None, use_other_vram=None, virtual_vram_gb=0.0, **kwargs):
+            global current_text_encoder_device
+            if device is not None:
+                current_text_encoder_device = device
+            
+            register_patched_ggufmodelpatcher()
+            fn = getattr(super(), cls.FUNCTION)
+            out = fn(*args, **kwargs)
+
+            vram_string = ""
+            if virtual_vram_gb > 0:
+                if use_other_vram:
+                    available_devices = [d for d in get_device_list() if d.startswith('cuda')]
+                    other_devices = [d for d in available_devices if d != device]
+                    other_devices.sort(key=lambda x: int(x.split(':')[1] if ':' in x else x[-1]), reverse=False)
+                    device_string = ','.join(other_devices + ['cpu'])
+                    vram_string = f"{device};{virtual_vram_gb};{device_string}"
+                else:
+                    vram_string = f"{device};{virtual_vram_gb};cpu"
+
+            full_allocation = f"{expert_mode_allocations}#{vram_string}" if expert_mode_allocations or vram_string else ""
+            
+            logging.info(f"[DisTorch] Full allocation string: {full_allocation}")
+            
+            if hasattr(out[0], 'model'):
+                model_hash = create_model_hash(out[0], "override")
+                model_allocation_store[model_hash] = full_allocation
+            elif hasattr(out[0], 'patcher') and hasattr(out[0].patcher, 'model'):
+                model_hash = create_model_hash(out[0].patcher, "override")
+                model_allocation_store[model_hash] = full_allocation
+
+            return out
+
+    return NodeOverrideDisTorch
+
 def check_module_exists(module_path):
     full_path = os.path.join(folder_paths.get_folder_paths("custom_nodes")[0], module_path)
     logging.info(f"MultiGPU: Checking for module at {full_path}")
@@ -598,9 +689,9 @@ NODE_CLASS_MAPPINGS["MergeFluxLoRAsQuantizeAndLoaddMultiGPU"] = override_class(M
 
 NODE_CLASS_MAPPINGS["UNETLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["UNETLoader"])
 NODE_CLASS_MAPPINGS["VAELoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["VAELoader"])
-NODE_CLASS_MAPPINGS["CLIPLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["CLIPLoader"])
-NODE_CLASS_MAPPINGS["DualCLIPLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["DualCLIPLoader"])
-NODE_CLASS_MAPPINGS["TripleCLIPLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["TripleCLIPLoader"])
+NODE_CLASS_MAPPINGS["CLIPLoaderMultiGPU"] = override_class_clip(GLOBAL_NODE_CLASS_MAPPINGS["CLIPLoader"])
+NODE_CLASS_MAPPINGS["DualCLIPLoaderMultiGPU"] = override_class_clip(GLOBAL_NODE_CLASS_MAPPINGS["DualCLIPLoader"])
+NODE_CLASS_MAPPINGS["TripleCLIPLoaderMultiGPU"] = override_class_clip(GLOBAL_NODE_CLASS_MAPPINGS["TripleCLIPLoader"])
 NODE_CLASS_MAPPINGS["CheckpointLoaderSimpleMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["CheckpointLoaderSimple"])
 NODE_CLASS_MAPPINGS["ControlNetLoaderMultiGPU"] = override_class(GLOBAL_NODE_CLASS_MAPPINGS["ControlNetLoader"])
 
@@ -627,12 +718,12 @@ if check_module_exists("ComfyUI-GGUF") or check_module_exists("comfyui-gguf"):
     NODE_CLASS_MAPPINGS["UnetLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch(UnetLoaderGGUF)
     NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedMultiGPU"] = override_class(UnetLoaderGGUFAdvanced)
     NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvancedDisTorchMultiGPU"] = override_class_with_distorch(UnetLoaderGGUFAdvanced)
-    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFMultiGPU"] = override_class(CLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch(CLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFMultiGPU"] = override_class(DualCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch(DualCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFMultiGPU"] = override_class(TripleCLIPLoaderGGUF)
-    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch(TripleCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFMultiGPU"] = override_class_clip(CLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["CLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch_clip(CLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFMultiGPU"] = override_class_clip(DualCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["DualCLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch_clip(DualCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFMultiGPU"] = override_class_clip(TripleCLIPLoaderGGUF)
+    NODE_CLASS_MAPPINGS["TripleCLIPLoaderGGUFDisTorchMultiGPU"] = override_class_with_distorch_clip(TripleCLIPLoaderGGUF)
 
 if check_module_exists("PuLID_ComfyUI") or check_module_exists("pulid_comfyui"):
     NODE_CLASS_MAPPINGS["PulidModelLoaderMultiGPU"] = override_class(PulidModelLoader)
