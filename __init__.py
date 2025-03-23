@@ -27,7 +27,8 @@ from .nodes import (
     LoadFluxControlNet,
     MMAudioModelLoader, MMAudioFeatureUtilsLoader, MMAudioSampler,
     PulidModelLoader, PulidInsightFaceLoader, PulidEvaClipLoader,
-    HyVideoModelLoader, HyVideoVAELoader, DownloadAndLoadHyVideoTextEncoder
+    HyVideoModelLoader, HyVideoVAELoader, DownloadAndLoadHyVideoTextEncoder,
+    DiffuEraserLoaderMultiGPU
 )
 
 current_device = mm.get_torch_device()
@@ -734,5 +735,8 @@ if check_module_exists("ComfyUI-HunyuanVideoWrapper") or check_module_exists("co
     NODE_CLASS_MAPPINGS["HyVideoModelLoaderMultiGPU"] = override_class(HyVideoModelLoader)
     NODE_CLASS_MAPPINGS["HyVideoVAELoaderMultiGPU"] = override_class(HyVideoVAELoader)
     NODE_CLASS_MAPPINGS["DownloadAndLoadHyVideoTextEncoderMultiGPU"] = override_class(DownloadAndLoadHyVideoTextEncoder)
+
+if check_module_exists("ComfyUI_DiffuEraser") or check_module_exists("comfyui-diffueraser"):
+    NODE_CLASS_MAPPINGS["DiffuEraserLoaderMultiGPU"] = override_class(DiffuEraserLoaderMultiGPU)
 
 logging.info(f"MultiGPU: Registration complete. Final mappings: {', '.join(NODE_CLASS_MAPPINGS.keys())}")
