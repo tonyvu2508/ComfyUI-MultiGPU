@@ -474,3 +474,23 @@ class DownloadAndLoadHyVideoTextEncoder:
         from nodes import NODE_CLASS_MAPPINGS
         original_loader = NODE_CLASS_MAPPINGS["DownloadAndLoadHyVideoTextEncoder"]()
         return original_loader.loadmodel(llm_model, clip_model, precision, apply_final_norm, hidden_state_skip_layer, quantization)
+
+class DiffuEraserLoaderMultiGPU:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "checkpoint": (["none"] + folder_paths.get_filename_list("checkpoints"),),
+                "lora": (["none"] + folder_paths.get_filename_list("loras"),),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL_DiffuEraser",)
+    RETURN_NAMES = ("model",)
+    FUNCTION = "loader_main"
+    CATEGORY = "DiffuEraser"
+
+    def loader_main(self, checkpoint, lora):
+        from nodes import NODE_CLASS_MAPPINGS
+        original_loader = NODE_CLASS_MAPPINGS["DiffuEraserLoader"]()
+        return original_loader.loader_main(checkpoint, lora)
